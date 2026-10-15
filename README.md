@@ -10,14 +10,15 @@ A [CloudStream 3](https://github.com/recloudstream/cloudstream) plugin that turn
 
 ## Install
 
-1. CloudStream → **Settings → Plugins → Add repository**
-2. Paste:
+[![Add to CloudStream](https://img.shields.io/badge/CloudStream-Add%20Repository-blue?style=for-the-badge)](https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/repo.json)
 
-   ```
-   https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/repo.json
-   ```
+**Install URL** (paste into CloudStream → **Settings → Plugins → Add repository**):
 
-3. Install **StreamioLink** from the repository page.
+```
+https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/repo.json
+```
+
+Then open the repository page and install **StreamioLink**.
 
 ## Setup
 

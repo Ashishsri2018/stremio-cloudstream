@@ -5,7 +5,8 @@
 - 1 catalog addon (default Cinemeta) + N source addons, managed via programmatic settings dialog.
 - Pure protocol/mapping layer with JVM unit tests; CI builds .cs3 and publishes to `builds` branch.
 - Repo created + CI green: https://github.com/Ashishsri2018/stremio-cloudstream (run 38729243040).
-- Install URL: https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/repo.json
+- Install URL: https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/repo.json
+  (branch-less raw URL 404s; always include /main/)
 - Published artifacts: `builds` branch -> `StreamioLink.cs3` + `plugins.json`.
 
 ## Build/CI Lessons (important)
@@ -25,3 +26,5 @@
   compatible (streams carry `behaviorHints.proxyHeaders.request` + `filename`; donation entry has no
   `url` and is skipped). Found + fixed: `guessStreamKind` used `endsWith` which failed on PenguPlay's
   `file.mkv|^|meta` filenames -> now `contains`; version 3.
+- TODO.md created: upcoming Presets feature (one catalog + N sources per preset,
+  create/select in settings, applying swaps catalog + sources only). Target v4, not started.
