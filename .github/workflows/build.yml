@@ -13,14 +13,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
+
+      # JitPack builds snapshots on demand; a cold cache can return 404 while
+      # building, which makes Gradle resolution fail without retrying.
+      - name: Warm up the Cloudstream Gradle plugin on JitPack
+        run: |
+          base="https://jitpack.io/com/github/recloudstream/gradle/master-SNAPSHOT"
+          version=""
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /tmp/jitpack-metadata.xml -w "%{http_code}" "$base/maven-metadata.xml" || true)
+            if [ "$code" = "200" ]; then
+              version=$(grep -oP '(?<=<version>)[^<]+' /tmp/jitpack-metadata.xml | head -n1)
+              if [ -n "$version" ]; then
+                echo "JitPack metadata resolved: $version"
+                break
+              fi
+            fi
+            echo "Attempt $i: metadata HTTP $code, retrying in 15s"
+            sleep 15
+          done
+          for i in $(seq 1 24); do
+            pom=$(curl -s -o /dev/null -w "%{http_code}" "$base/gradle-${version}.pom" || true)
+            jar=$(curl -s -o /dev/null -w "%{http_code}" "$base/gradle-${version}.jar" || true)
+            if [ "$pom" = "200" ] && [ "$jar" = "200" ]; then
+              echo "JitPack artifacts ready: $version"
+              exit 0
+            fi
+            echo "Attempt $i: pom HTTP $pom, jar HTTP $jar, retrying in 15s"
+            sleep 15
+          done
+          echo "JitPack artifacts not ready, continuing anyway"
+          exit 0
 
       - name: Unit tests
         run: |
