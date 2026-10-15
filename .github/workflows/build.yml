@@ -22,11 +22,11 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      # JitPack builds snapshots on demand; a cold cache can return 404 while
-      # building, which makes Gradle resolution fail without retrying.
+      # JitPack builds snapshots on demand and occasionally returns 404 while
+      # (re)building after a cache purge; Gradle does not retry those.
       - name: Warm up the Cloudstream Gradle plugin on JitPack
         run: |
-          base="https://jitpack.io/com/github/recloudstream/gradle/master-SNAPSHOT"
+          base="https://jitpack.io/com/github/recloudstream/gradle/gradle/master-SNAPSHOT"
           version=""
           for i in $(seq 1 12); do
             code=$(curl -s -o /tmp/jitpack-metadata.xml -w "%{http_code}" "$base/maven-metadata.xml" || true)
@@ -56,10 +56,21 @@ jobs:
       - name: Unit tests
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest
+          for i in $(seq 1 6); do
+            if ./gradlew testDebugUnitTest; then exit 0; fi
+            echo "Gradle attempt $i failed (transient JitPack/network failures are retried), sleeping 20s"
+            sleep 20
+          done
+          exit 1
 
       - name: Build Plugins & JSON
-        run: ./gradlew make makePluginsJson
+        run: |
+          for i in $(seq 1 3); do
+            if ./gradlew make makePluginsJson; then exit 0; fi
+            echo "Gradle attempt $i failed, sleeping 20s"
+            sleep 20
+          done
+          exit 1
 
       - name: Prepare Deployment Folder
         run: |

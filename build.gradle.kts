@@ -13,8 +13,11 @@ buildscript {
 
     dependencies {
         classpath("com.android.tools.build:gradle:8.7.3")
-        // Cloudstream gradle plugin which makes everything work and builds plugins
-        classpath("com.github.recloudstream:gradle:master-SNAPSHOT")
+        // Cloudstream gradle plugin which makes everything work and builds plugins.
+        // NOTE: the widely documented "com.github.recloudstream:gradle" coordinate only
+        // serves an auto-generated stub on JitPack; the real plugin jar is published
+        // under the module group below.
+        classpath("com.github.recloudstream.gradle:gradle:master-SNAPSHOT")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
     }
 }
