@@ -21,3 +21,7 @@
 - Package/namespace renamed `com.magic.stremio` -> `com.cs3addon.StreamioLink` (conflict with an
   already-installed package on the user's device); module version bumped to 2 so CloudStream replaces
   the installed v1.
+- Live-tested against PenguPlay (debrid-style addon, config blob URL): manifest/stream/subtitles all
+  compatible (streams carry `behaviorHints.proxyHeaders.request` + `filename`; donation entry has no
+  `url` and is skipped). Found + fixed: `guessStreamKind` used `endsWith` which failed on PenguPlay's
+  `file.mkv|^|meta` filenames -> now `contains`; version 3.

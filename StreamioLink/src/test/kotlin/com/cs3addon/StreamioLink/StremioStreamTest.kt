@@ -81,6 +81,25 @@ class StremioStreamTest {
             StremioMapping.StreamKind.HLS,
             StremioMapping.guessStreamKind("https://debrid.example/d/XYZ", "playlist.m3u8")
         )
+        // PenguPlay style: metadata appended after the extension with "|^|"
+        assertEquals(
+            StremioMapping.StreamKind.HLS,
+            StremioMapping.guessStreamKind(
+                "https://pengu.example/direct/external/opaque",
+                "Breaking.Bad.S01.E01.720p.m3u8|^|720pMKVBluRay"
+            )
+        )
+        assertEquals(
+            StremioMapping.StreamKind.DASH,
+            StremioMapping.guessStreamKind("https://debrid.example/d/XYZ", "manifest.mpd|^|1080p")
+        )
+        assertEquals(
+            StremioMapping.StreamKind.VIDEO,
+            StremioMapping.guessStreamKind(
+                "https://pengu.example/direct/external/opaque",
+                "The.Shawshank.Redemption.1994.720p.x264.mkv|^|720pMKVBluRay"
+            )
+        )
     }
 
     @Test

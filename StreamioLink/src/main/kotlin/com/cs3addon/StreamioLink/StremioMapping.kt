@@ -152,9 +152,12 @@ object StremioMapping {
     fun guessStreamKind(url: String, filename: String? = null): StreamKind {
         val path = url.substringBefore('?').substringBefore('#').lowercase()
         val name = filename?.lowercase().orEmpty()
+        // Addons such as PenguPlay append metadata after the extension
+        // (e.g. "movie.mkv|^|720p..."), so check for the marker anywhere
+        // instead of only at the end of the string.
         return when {
-            path.endsWith(".m3u8") || name.endsWith(".m3u8") -> StreamKind.HLS
-            path.endsWith(".mpd") || name.endsWith(".mpd") -> StreamKind.DASH
+            path.contains(".m3u8") || name.contains(".m3u8") -> StreamKind.HLS
+            path.contains(".mpd") || name.contains(".mpd") -> StreamKind.DASH
             else -> StreamKind.VIDEO
         }
     }
