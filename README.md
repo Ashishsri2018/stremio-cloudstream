@@ -62,7 +62,7 @@ Everything is built by GitHub Actions (`.github/workflows/build.yml`):
 ## Project structure
 
 ```
-StremioPlugin/
+StreamioLink/
   src/main/kotlin/com/magic/stremio/
     StremioPlugin.kt          # plugin entry point, registers the provider
     StremioProvider.kt        # MainAPI implementation (home, search, load, links)

@@ -24,5 +24,5 @@ cloudstream {
     tvTypes = listOf("Movie", "TvSeries")
     language = "en"
 
-    iconUrl = "https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/StremioPlugin/icon.png"
+    iconUrl = "https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/StreamioLink/icon.png"
 }

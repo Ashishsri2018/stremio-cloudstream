@@ -16,7 +16,7 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 - Persist addon configuration via the CloudStream data store.
 
 ## Module Layout
-- `StremioPlugin` — plugin entry, `openSettings` hook.
+- `StreamioLink` (module) — plugin entry `StremioPlugin.kt`, `openSettings` hook.
 - `StremioProvider` — `MainAPI` implementation; all CloudStream object construction.
 - `StremioApi` — network + manifest cache (TTL 30 min, stale fallback).
 - `StremioMapping` — pure, Android-free protocol logic (parsing, URL building, quality/prefix matching).
