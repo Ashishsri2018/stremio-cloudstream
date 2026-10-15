@@ -1,4 +1,4 @@
-package com.magic.stremio
+package com.cs3addon.StreamioLink
 
 import android.content.ClipboardManager
 import android.content.Context

@@ -18,3 +18,6 @@
 - Plugin list display name = module directory name (no `name` field in CloudstreamExtension),
   so the module dir was renamed `StremioPlugin` -> `StreamioLink`.
 - raw.githubusercontent.com serves stale CDN copies for minutes after a push; verify with the API.
+- Package/namespace renamed `com.magic.stremio` -> `com.cs3addon.StreamioLink` (conflict with an
+  already-installed package on the user's device); module version bumped to 2 so CloudStream replaces
+  the installed v1.

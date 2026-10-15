@@ -1,4 +1,4 @@
-package com.magic.stremio
+package com.cs3addon.StreamioLink
 
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey

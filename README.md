@@ -63,7 +63,7 @@ Everything is built by GitHub Actions (`.github/workflows/build.yml`):
 
 ```
 StreamioLink/
-  src/main/kotlin/com/magic/stremio/
+  src/main/kotlin/com/cs3addon/StreamioLink/
     StremioPlugin.kt          # plugin entry point, registers the provider
     StremioProvider.kt        # MainAPI implementation (home, search, load, links)
     StremioApi.kt             # HTTP layer + manifest cache
@@ -71,5 +71,5 @@ StreamioLink/
     StremioModels.kt          # Jackson DTOs for the Stremio protocol
     StremioSettings.kt        # persisted settings
     StremioSettingsDialog.kt  # programmatic settings UI
-  src/test/kotlin/com/magic/stremio/  # JVM unit tests for the pure logic
+  src/test/kotlin/com/cs3addon/StreamioLink/  # JVM unit tests for the pure logic
 ```

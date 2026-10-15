@@ -1,4 +1,4 @@
-package com.magic.stremio
+package com.cs3addon.StreamioLink
 
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app

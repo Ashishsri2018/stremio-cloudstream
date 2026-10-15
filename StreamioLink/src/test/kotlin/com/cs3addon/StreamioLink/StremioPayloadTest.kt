@@ -1,4 +1,4 @@
-package com.magic.stremio
+package com.cs3addon.StreamioLink
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
