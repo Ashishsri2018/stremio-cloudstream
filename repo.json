@@ -1,0 +1,9 @@
+{
+  "name": "StreamioLink Repository",
+  "description": "Play Stremio addons inside CloudStream. One catalog addon (default: Cinemeta) plus as many source addons as you want.",
+  "iconUrl": "https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/StremioPlugin/icon.png",
+  "manifestVersion": 2,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/builds/plugins.json"
+  ]
+}
