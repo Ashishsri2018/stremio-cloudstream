@@ -4,13 +4,19 @@ CloudStream 3 (Android) plugin in Kotlin that plays Stremio-addon streams.
 Single Gradle module `StreamioLink`; package `com.cs3addon.StreamioLink`.
 Canonical repo: `Ashishsri2018/stremio-cloudstream` (CI publishes builds there).
 
+## Environment (verified — do not re-check every run)
+
+- **No `gradle`/`./gradlew` execution possible here**: no Android SDK, no `local.properties`/`ANDROID_HOME`. Do not try `./gradlew ...`; it fails at configuration. Never spend turns probing for it.
+- **`git` and `gh` ARE installed and authenticated** as `Ashishsri2018` (git user/email set, `gh auth status` logged in, HTTPS push works). Commit/push and watch CI with `gh run watch <id> --exit-status` directly — no need to verify auth first.
+- CI (`.github/workflows/build.yml`) is the only real build; it runs on push to `main` and publishes to the `builds` branch.
+
 ## Commands
 
 - Unit tests: `./gradlew testDebugUnitTest` — pure JVM, no network, cover `StremioMapping`.
 - Single test: `./gradlew testDebugUnitTest --tests "com.cs3addon.StreamioLink.StremioStreamTest"`.
 - Plugin build: `./gradlew make makePluginsJson` → `.cs3` + `build/plugins.json`.
 - Addon playtest: `python3 tools/playtest.py <addon-url> --id tt0111161 --type movie` (live network, stdlib only) — **INCOMPLETE / LOW PRIORITY, not maintained**: it still mirrors the old mapping, does not build magnet/P2P links, and can report "no streams" for torrent-only addons. Don't rely on it; the plugin + its JVM unit tests are the source of truth. When it does something, `--manifest` prints a compatibility summary, `--search`/`--catalog ... --play` are other entry points, `--deep` fetches an HLS segment, `--json` is machine output.
-- Local builds need Android SDK 35 (`compileSdk 35`), a `local.properties`/`ANDROID_HOME`, and network for Gradle 8.12 + JitPack. None of that is set up in this workspace, so treat `.github/workflows/build.yml` as the build source of truth (JDK 17 + Android SDK).
+- Local builds need Android SDK 35 (`compileSdk 35`), a `local.properties`/`ANDROID_HOME`, and network for Gradle 8.12 + JitPack — none present here, so treat `.github/workflows/build.yml` as the build source of truth (JDK 17 + Android SDK).
 
 ## Hard constraints — do not "clean up"
 
