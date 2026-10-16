@@ -22,7 +22,7 @@ object StremioApi {
      * providers server-side and can legitimately take tens of seconds; a short cap here
      * caused slow addons to be silently skipped.
      */
-    const val STREAM_TIMEOUT_MS = 60_000L
+    const val STREAM_TIMEOUT_MS = 90_000L
 
     private data class CachedManifest(val manifest: StremioManifest, val fetchedAt: Long)
 
@@ -99,8 +99,14 @@ object StremioApi {
             emptyList()
         }
 
+    /**
+     * Cloudstream's `app` is a NiceHttp `Requests` whose default timeout is 0, which
+     * leaves OkHttp's 10 s read timeout in place. Slow aggregator addons (PenguPlay etc.)
+     * routinely need longer than that to produce a first byte, so they must be given an
+     * explicit per-request timeout. NiceHttp takes the timeout in seconds.
+     */
     private suspend fun request(url: String, timeoutMs: Long): String? =
-        kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
-            app.get(url).text
+        kotlinx.coroutines.withTimeoutOrNull(timeoutMs + 1_000L) {
+            app.get(url, timeout = (timeoutMs / 1000L).coerceAtLeast(1L)).text
         }
 }

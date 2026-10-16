@@ -34,9 +34,12 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 2. Courses: search-capable catalogs → `/catalog/{type}/{id}/search=...json` (falls back to meta addon).
 3. Load: `/meta/{type}/{id}.json` (catalog addon, then fallback) → movie page or episode list.
 4. Links: all source addons declared `stream` resource and matching type/idPrefixes are queried
-   in parallel **per addon** — each addon emits its `ExtractorLink`s as soon as it responds, so a
-   slow addon never delays the fast ones while still being awaited (up to `STREAM_TIMEOUT_MS`).
-   URL streams become `ExtractorLink`s (HLS/DASH/VIDEO); headers come from
+   in parallel **per addon** (`supervisorScope`, so one addon's failure cannot cancel the others) —
+   each addon emits its `ExtractorLink`s as soon as it responds, so a slow addon never delays the
+   fast ones while still being awaited (up to `STREAM_TIMEOUT_MS`). Every addon request passes an
+   explicit per-call timeout (`app.get(url, timeout = seconds)`), because CloudStream's NiceHttp
+   `app` defaults to `timeout = 0`, which leaves OkHttp's 10 s read timeout in place and silently
+   drops slow aggregators. URL streams become `ExtractorLink`s (HLS/DASH/VIDEO); headers come from
    `behaviorHints.proxyHeaders`, and when the addon supplies no `User-Agent` the non-Mozilla
    `StremioMapping.DEFAULT_STREAM_USER_AGENT` is injected (some CDNs reject browser UAs with 428).
 5. Subtitles: addons declaring `subtitles` resource → `/subtitles/{type}/{id}.json`,
@@ -53,4 +56,5 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 - Addon configuration web UIs are not embedded; users paste configured manifest URLs.
 - The provider advertises `TvType.Others` (not episode-based) while still returning
   `Movie`/`TvSeries` items, so CloudStream lists it under a dedicated category instead of mixing it
-  into Movies/Series; `loadLinksTimeoutMs` is raised to 180 s for slow debrid addons.
+  into Movies/Series. `loadLinksTimeoutMs` is raised to 180 s; individual network calls use
+  `StremioApi` timeouts (20 s metadata, 90 s streams/subtitles) so slow addons are not dropped.

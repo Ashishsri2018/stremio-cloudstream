@@ -24,10 +24,12 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
@@ -325,33 +327,39 @@ class StremioProvider : MainAPI() {
 
         // Fan out per addon. Each addon emits its links as soon as it responds so a slow
         // addon never blocks the fast ones and is still waited for (up to STREAM_TIMEOUT_MS).
-        coroutineScope {
+        // supervisorScope keeps one addon's failure from cancelling the others.
+        supervisorScope {
             addonBases.forEach { base ->
                 launch {
-                    val manifest = StremioApi.getManifest(base) ?: return@launch
-                    manifests[base] = manifest
+                    try {
+                        val manifest = StremioApi.getManifest(base) ?: return@launch
+                        manifests[base] = manifest
 
-                    val supportsStream = StremioMapping.manifestSupportsResource(manifest, "stream") &&
-                        type in StremioMapping.resourceTypesFor(manifest, "stream").map { it.lowercase() } &&
-                        StremioMapping.idMatchesPrefixes(
-                            payload.id,
-                            StremioMapping.resourceIdPrefixesFor(manifest, "stream")
-                        )
-                    if (!supportsStream) return@launch
+                        val supportsStream = StremioMapping.manifestSupportsResource(manifest, "stream") &&
+                            type in StremioMapping.resourceTypesFor(manifest, "stream").map { it.lowercase() } &&
+                            StremioMapping.idMatchesPrefixes(
+                                payload.id,
+                                StremioMapping.resourceIdPrefixesFor(manifest, "stream")
+                            )
+                        if (!supportsStream) return@launch
 
-                    val addonName = manifest.name?.takeIf { it.isNotBlank() } ?: hostOf(base)
-                    val streams = StremioApi.getStreams(base, type, payload.id)
-                    for (candidate in candidatesFor(addonName, streams, subtitleProbeHash, subtitleProbeSize)) {
-                        if (emitted.incrementAndGet() > MAX_LINKS) break
-                        val linkType = resolveLinkType(candidate, probeSemaphore, probeBudget)
-                        callback.invoke(
-                            newExtractorLink(candidate.addonName, candidate.label, candidate.url, linkType) {
-                                this.quality = candidate.quality
-                                this.referer = candidate.referer
-                                this.headers = candidate.headers
-                            }
-                        )
-                        found.set(true)
+                        val addonName = manifest.name?.takeIf { it.isNotBlank() } ?: hostOf(base)
+                        val streams = StremioApi.getStreams(base, type, payload.id)
+                        for (candidate in candidatesFor(addonName, streams, subtitleProbeHash, subtitleProbeSize)) {
+                            if (emitted.incrementAndGet() > MAX_LINKS) break
+                            val linkType = resolveLinkType(candidate, probeSemaphore, probeBudget)
+                            callback.invoke(
+                                newExtractorLink(candidate.addonName, candidate.label, candidate.url, linkType) {
+                                    this.quality = candidate.quality
+                                    this.referer = candidate.referer
+                                    this.headers = candidate.headers
+                                }
+                            )
+                            found.set(true)
+                        }
+                    } catch (t: Throwable) {
+                        if (t is CancellationException) throw t
+                        Log.e(TAG, "Addon $base failed: ${t.message}")
                     }
                 }
             }

@@ -52,3 +52,21 @@
   60 s (`STREAM_TIMEOUT_MS`).
 - Out of scope: upstream HTTP 500 from some Cinejoy streams and addons serving expired signed URLs.
 
+## 2026-10-16 — slow addons actually fixed (NiceHttp/OkHttp timeout trap) — version 5
+- Symptom: PenguPlay (and other slow aggregator addons) still "skipped" while hdhub plays, even
+  after the v4 `loadLinksTimeoutMs`/incremental-emit work. Not a playback-lifecycle issue: the
+  player's `loadLinks` job is not cancelled on playback (`PlayerGeneratorViewModel.loadLinks` runs
+  in `viewModelScope`; `GeneratorPlayer.startPlayer` only loads the chosen link).
+- Root cause: CloudStream's `app` is a NiceHttp `Requests` with `defaultTimeOut = 0`. In NiceHttp,
+  `timeout = 0` skips setting connect/read/write timeouts, so OkHttp's default **10 s read timeout**
+  applies (`RequestsHelper.buildDefaultClient` sets no timeouts). Pengu TTFB measured 5.7-28.8 s,
+  so requests over ~10 s threw `SocketTimeoutException`, which `StremioApi.getStreams` swallowed
+  (fail-soft) -> empty list -> addon silently skipped. A longer `withTimeoutOrNull` cannot help
+  because the OkHttp timeout fires first.
+- Fix: `StremioApi.request` now passes an explicit timeout: `app.get(url, timeout = ms / 1000)`
+  (NiceHttp takes seconds; must be > 0 or it is ignored). `STREAM_TIMEOUT_MS` raised 60 s -> 90 s.
+- Also adopted CSX/CineStream's fan-out hardening (`CineStreamUtils.runLimitedAsync`): `loadLinks`
+  now uses `supervisorScope` + per-addon `try/catch` (rethrows `CancellationException`) so one
+  addon's failure cannot cancel the others. Reference technique: `app.get(url, timeout = 100000L)`.
+- `StremioApi` timeout split now: manifest/catalog/meta 20 s, streams/subtitles 90 s.
+

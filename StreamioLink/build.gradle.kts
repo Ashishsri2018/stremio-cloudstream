@@ -6,7 +6,7 @@ dependencies {
 }
 
 // Use an integer for version numbers
-version = 4
+version = 5
 
 cloudstream {
     description = "Play streams from Stremio addons. Configure one catalog addon (default: Cinemeta) plus as many source addons as you like in the settings."
