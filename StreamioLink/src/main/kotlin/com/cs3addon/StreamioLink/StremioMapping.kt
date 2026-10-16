@@ -260,4 +260,11 @@ object StremioMapping {
 
     fun yearFromReleaseInfo(releaseInfo: String?): Int? =
         releaseInfo?.let { yearRegex.find(it)?.value?.toIntOrNull() }
+
+    /**
+     * Episode label for a Stremio video. The protocol uses `name`, but some addons
+     * (e.g. Nuvio's TMDB catalog) put the episode title in `title` instead.
+     */
+    fun episodeName(video: StremioVideo): String? =
+        video.name?.trim()?.takeIf { it.isNotEmpty() } ?: video.title?.trim()?.takeIf { it.isNotEmpty() }
 }

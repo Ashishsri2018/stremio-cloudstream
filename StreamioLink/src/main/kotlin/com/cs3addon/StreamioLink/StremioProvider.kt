@@ -294,7 +294,7 @@ class StremioProvider : MainAPI() {
     private fun toEpisode(parentType: String, video: StremioVideo): Episode? {
         val videoId = video.id ?: return null
         return newEpisode(StremioMapping.encodePayload(videoId, parentType)) {
-            this.name = video.name?.takeIf { it.isNotBlank() } ?: videoId
+            this.name = StremioMapping.episodeName(video) ?: videoId
             this.season = video.season ?: 1
             this.episode = video.episode ?: video.number ?: 1
             this.posterUrl = video.thumbnail

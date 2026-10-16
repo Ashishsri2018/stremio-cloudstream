@@ -85,6 +85,8 @@ data class StremioMetaDetails(
 data class StremioVideo(
     @JsonProperty("id") val id: String? = null,
     @JsonProperty("name") val name: String? = null,
+    /** Some addons (e.g. Nuvio's TMDB catalog) label the episode here instead of `name`. */
+    @JsonProperty("title") val title: String? = null,
     @JsonProperty("season") val season: Int? = null,
     @JsonProperty("episode") val episode: Int? = null,
     @JsonProperty("number") val number: Int? = null,

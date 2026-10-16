@@ -223,6 +223,31 @@ class StremioStreamTest {
     }
 
     @Test
+    fun episodeNameFallsBackToTitleField() {
+        // Nuvio's TMDB catalog labels episodes with `title` instead of `name`.
+        val meta = StremioMapping.parseMeta(
+            """
+            {
+              "meta": {
+                "id": "tt1234567",
+                "type": "series",
+                "name": "Breaking Bad",
+                "videos": [
+                  { "id": "tt0903747:1:1", "title": "Pilot", "season": 1, "episode": 1 }
+                ]
+              }
+            }
+            """.trimIndent()
+        )
+        val video = meta?.videos?.first()
+        assertEquals("Pilot", video?.title)
+        assertNull(video?.name)
+        assertEquals("Pilot", video?.let { StremioMapping.episodeName(it) })
+        assertEquals("Name wins", StremioMapping.episodeName(StremioVideo(name = "Name wins", title = "Title")))
+        assertNull(StremioMapping.episodeName(StremioVideo(name = "  ", title = "")))
+    }
+
+    @Test
     fun parsesSubtitles() {
         val subtitles = StremioMapping.parseSubtitles(
             """{ "subtitles": [ { "id": "1", "url": "https://subs.example/1.srt", "lang": "en" } ] }"""

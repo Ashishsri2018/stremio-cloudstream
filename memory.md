@@ -125,5 +125,13 @@
 - Not implemented (possible follow-up): a setting to opt out of P2P/torrent links. CloudStream's
   own consent dialog already gates each torrent session.
 
+## 2026-10-16 — Episode names showed as ids with Nuvio catalog — version 7
+- Symptom: every episode listed as its video id (`tt0903747:1:1`) instead of the episode title.
+- Cause: Nuvio (`https://catalog.nuvio.tv`, `com.nuvio.tmdb.catalogs`) puts the episode label in
+  `video.title` ("Pilot"), but Stremio's protocol (and our `StremioVideo`) only read `video.name`,
+  so `toEpisode` fell back to `videoId`.
+- Fix: added `title` to `StremioVideo`; new `StremioMapping.episodeName(video)` prefers
+  `name` then `title`; `toEpisode` uses it before the id fallback. Unit test covers the fallback.
+
 
 
