@@ -60,6 +60,42 @@ class StremioStreamTest {
     }
 
     @Test
+    fun buildsMagnetFromInfoHashStream() {
+        val stream = StremioStream(
+            infoHash = "45fa4233ef87c58f5f8b4817e4d50c9f5363caef",
+            fileIdx = 3,
+            behaviorHints = StremioBehaviorHints(filename = "Show S01E02 1080p.mkv"),
+            sources = listOf(
+                "dht:45fa4233ef87c58f5f8b4817e4d50c9f5363caef",
+                "tracker:udp://tracker.opentrackr.org:1337/announce",
+                "tracker:https://tracker.example/announce",
+            ),
+        )
+        val magnet = StremioMapping.torrentUrlFor(stream)!!
+        assertTrue(magnet.startsWith("magnet:?xt=urn:btih:45fa4233ef87c58f5f8b4817e4d50c9f5363caef"))
+        assertTrue(magnet.contains("dn=Show%20S01E02%201080p.mkv"))
+        assertTrue(
+            magnet.contains(
+                "tr=" + StremioMapping.encodeQueryValue("udp://tracker.opentrackr.org:1337/announce")
+            )
+        )
+        assertTrue(
+            magnet.contains("tr=" + StremioMapping.encodeQueryValue("https://tracker.example/announce"))
+        )
+        assertTrue(magnet.contains("&index=3"))
+        assertTrue(!magnet.contains("dht%3A"))
+    }
+
+    @Test
+    fun magnetIsOnlyBuiltForInfoHashStreams() {
+        assertNull(StremioMapping.torrentUrlFor(streams[0])) // direct url, no hash
+        assertNull(StremioMapping.torrentUrlFor(streams[4])) // externalUrl only
+        assertEquals("magnet:?xt=urn:btih:DEADBEEF", StremioMapping.torrentUrlFor(streams[2]))
+        assertTrue(StremioMapping.isTorrentUrl("magnet:?xt=urn:btih:abc"))
+        assertTrue(!StremioMapping.isTorrentUrl("https://cdn.example/a.m3u8"))
+    }
+
+    @Test
     fun extractsProxyHeadersAndReferer() {
         val headers = StremioMapping.requestHeadersFor(streams[0])
         assertEquals("TestUA", headers["User-Agent"])

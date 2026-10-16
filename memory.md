@@ -70,3 +70,60 @@
   addon's failure cannot cancel the others. Reference technique: `app.get(url, timeout = 100000L)`.
 - `StremioApi` timeout split now: manifest/catalog/meta 20 s, streams/subtitles 90 s.
 
+## 2026-10-16 — addon playtest tool + CNCVerse (source-addon) findings
+- Added `tools/playtest.py`: dependency-free CLI (stdlib only) that mirrors `StremioMapping`
+  (`normalizeAddonUrl`, `requestHeadersFor`, `extractReferer`, `guessStreamKind`, `parseQuality`,
+  `streamDisplayName`) to fetch a manifest, resolve a movie/series/catalog item, build stream
+  candidates and probe each URL (ranged GET, redirects) as PLAYABLE / NOT-MEDIA / DEAD.
+  Modes: `--manifest`, `--id <id> --type`, `--search`, `--catalog type/id --play`, plus
+  `--deep` (fetch first HLS segment), `--json`, `--quality`, `--insecure`. Exits non-zero when
+  nothing plays, so it is CI-usable. It is a diagnostic mirror, not part of the unit suite
+  (`StremioMapping` tests stay network-free).
+- Tested `https://cncverse.dpdns.org/u/p_l0uq0xtenbo7` (CNCVerse Bridge): manifest parses, but all
+  50 catalogs are type `other`/`tv`, so `catalogCanLoadHome`/`catalogSupportsSearch` reject them
+  (only `movie`/`series` accepted) -> useless as a *catalog* addon, fine as a *source* addon for
+  `tt` movie/series ids.
+- Playback failures are addon-side link quality, not a plugin bug: for `tt0111161` only 8/15
+  candidates played (some 404, some `text/html` landing pages from Moviezwap, some dead hosts);
+  `tt0903747:1:1` was 10/10 playable. The plugin emits every candidate without a liveness check
+  (`resolveLinkType` probes only to classify kind), so users can tap a dead link first. The
+  plugin's header/UA handling was confirmed correct (206 with the addon's `Referer` + okhttp UA).
+- Deliberately not changed: no liveness filtering/reordering in `loadLinks` (skipped by request).
+- Tested `https://plaviohd.vercel.app/c/<config>/manifest.json` (PlavioHD, community.plaviohd):
+  manifest OK (movie/series/tv, catalog+meta+stream, no idPrefixes), but its 4 catalogs are all
+  `tv` (sports) -> source-addon only. As a source it is good: `tt0111161` returned 3/3 playable
+  and `ffprobe` decoded them (h264 720p + AAC, and h264 1080p + AC3, ~2h22m). `tt0903747:1:1`
+  returned a single Vidzee HLS that is actually a **JPEG trickplay playlist** (segments are
+  `image/jpeg`, `ffprobe` = "Invalid data found") — a real addon-side trap.
+- Tool follow-ups from this test: `--json` now emits only JSON (human summary suppressed); `--deep`
+  fetches the first `#EXTINF` segment and marks an HLS playlist whose segments are images as
+  NOT-MEDIA ("trickplay"), instead of trusting the `application/vnd.apple.mpegurl` content-type.
+
+## 2026-10-16 — P2P/torrent addons now supported (Meteor test) — version 6
+- Question: "Nuvio plays from a torrent addon without debrid; can StreamioLink?" Answer: yes.
+- Tested Meteor (`community.meteor`, `https://meteorfortheweebs.midnightignite.me`, source-only:
+  resources=[stream], types movie/series/anime, idPrefixes tt/kitsu/anilist/mal/anidb, no catalogs).
+  `tt0111161` returned 82 streams, `tt0903747:1:1` 75 — **all `infoHash`+`sources`, 0 with `url`**.
+  No `subtitles` resource (404), so the plugin correctly contributes no subtitles.
+- Why Nuvio plays them: it bundles a native torrent engine (libtorrent4j in NuvioTV; the newer
+  `NuvioMedia/nuvio-engine` is C++20+libtorrent). It selects a file, serves it over a local HTTP
+  range server and feeds ExoPlayer/mpv. Stremio does the same.
+- Why CloudStream can too: the host app already ships `com.github.recloudstream:torrentserver`
+  (Go) and its player handles `ExtractorLinkType.MAGNET`/`TORRENT` (`CS3IPlayer.loadOnlinePlayer`
+  -> `Torrent.transformLink`, gated by a one-time consent dialog and the "Torrent" preferred-media
+  setting). `RepoLinkGenerator`/`ExtractorLinkGenerator` forward any link whose type is in
+  `LOADTYPE_INAPP` (includes `MAGNET`). Plugins do NOT need a native engine.
+- Fix: `StremioMapping.torrentUrlFor(stream)` builds `magnet:?xt=urn:btih:<infoHash>` +
+  `dn=<filename>` + `tr=<tracker>` (from `sources`, ignoring `dht:`) + `index=<fileIdx>`;
+  `isTorrentUrl` detects it. `StremioProvider.candidatesFor` falls back from `playbackUrlFor` to
+  the magnet and flags the candidate; `resolveLinkType` returns `ExtractorLinkType.MAGNET` for it
+  (never probes). Added `fileIdx` to `StremioStream`. Unit tests cover magnet building.
+- Addon-side quirk found: Meteor's `/{config}/stream/...` returned `401 invalid session` for the
+  user's blob specifically because `languageFormat` was an array `["flags"]`; a string works. Its
+  `/{anything}/manifest.json` is a catch-all stub, so a bad install URL still "loads a manifest"
+  then silently yields no streams. Not fixable plugin-side.
+- Not implemented (possible follow-up): a setting to opt out of P2P/torrent links. CloudStream's
+  own consent dialog already gates each torrent session.
+
+
+

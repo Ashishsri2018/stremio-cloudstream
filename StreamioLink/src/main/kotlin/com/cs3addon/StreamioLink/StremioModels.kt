@@ -108,6 +108,8 @@ data class StremioStream(
     @JsonProperty("url") val url: String? = null,
     @JsonProperty("ytId") val ytId: String? = null,
     @JsonProperty("infoHash") val infoHash: String? = null,
+    /** Selected file inside a multi-file torrent (season packs). Used as the magnet `index`. */
+    @JsonProperty("fileIdx") val fileIdx: Int? = null,
     @JsonProperty("externalUrl") val externalUrl: String? = null,
     @JsonProperty("name") val name: String? = null,
     @JsonProperty("title") val title: String? = null,

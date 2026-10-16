@@ -5,6 +5,8 @@
 .DS_Store
 /build
 **/build
+__pycache__/
+*.pyc
 /captures
 .externalNativeBuild
 .cxx

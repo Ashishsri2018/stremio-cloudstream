@@ -186,12 +186,42 @@ object StremioMapping {
         }
     }
 
-    /** Playable URL for a stream, or null when the stream needs external handling (torrents, external sites). */
+    /** Direct playable URL for a stream, or null when the stream only carries a torrent/site reference. */
     fun playbackUrlFor(stream: StremioStream): String? {
         stream.url?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
         stream.ytId?.trim()?.takeIf { it.isNotEmpty() }?.let { return "https://www.youtube.com/watch?v=$it" }
         return null
     }
+
+    /**
+     * Magnet URI for an infoHash-only stream, or null when the stream has no hash.
+     *
+     * Cloudstream's bundled torrent engine plays these: the host app turns a magnet
+     * link into a local range server (`127.0.0.1`) and streams it, so a P2P Stremio
+     * stream is playable without a debrid account. `index` selects a file inside
+     * multi-file torrents (season packs).
+     */
+    fun torrentUrlFor(stream: StremioStream): String? {
+        val hash = stream.infoHash?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val parts = ArrayList<String>()
+        parts.add("xt=urn:btih:$hash")
+        stream.behaviorHints?.filename?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            parts.add("dn=${encodeQueryValue(it)}")
+        }
+        stream.sources.orEmpty().forEach { raw ->
+            val tracker = when {
+                raw.startsWith("tracker:", ignoreCase = true) -> raw.substringAfter("tracker:")
+                raw.startsWith("dht:", ignoreCase = true) -> null
+                raw.contains("://") -> raw
+                else -> null
+            }?.trim()?.takeIf { it.isNotEmpty() }
+            if (tracker != null) parts.add("tr=${encodeQueryValue(tracker)}")
+        }
+        stream.fileIdx?.takeIf { it >= 0 }?.let { parts.add("index=$it") }
+        return "magnet:?" + parts.joinToString("&")
+    }
+
+    fun isTorrentUrl(url: String): Boolean = url.startsWith("magnet:", ignoreCase = true)
 
     fun requestHeadersFor(stream: StremioStream): Map<String, String> {
         val provided = stream.behaviorHints?.proxyHeaders?.request.orEmpty()

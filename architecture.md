@@ -42,6 +42,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    drops slow aggregators. URL streams become `ExtractorLink`s (HLS/DASH/VIDEO); headers come from
    `behaviorHints.proxyHeaders`, and when the addon supplies no `User-Agent` the non-Mozilla
    `StremioMapping.DEFAULT_STREAM_USER_AGENT` is injected (some CDNs reject browser UAs with 428).
+   `infoHash`-only streams (plain torrent addons) become a magnet via `StremioMapping.torrentUrlFor`
+   (infoHash + `tracker:` sources + `fileIdx` as `index`) and are emitted as
+   `ExtractorLinkType.MAGNET`; CloudStream's bundled torrent engine plays them from a local server,
+   so P2P works without a debrid account.
 5. Subtitles: addons declaring `subtitles` resource → `/subtitles/{type}/{id}.json`,
    enriched with `videoHash`/`videoSize` from the first stream when available. Emitted after all
    stream addons resolve so the probe hints are populated.
@@ -51,9 +55,13 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 - `repo.json` (main branch) points CloudStream at `builds/plugins.json`.
 
 ## Known Limitations
-- Magnet/infoHash-only streams are skipped (no torrent engine in CloudStream); debrid-configured addons work.
+- `infoHash`-only streams are played through CloudStream's built-in torrent engine (as `MAGNET`
+  links). This requires the host build to ship the torrent server and the user to accept the
+  torrent consent prompt; store builds without a torrent engine cannot play them.
 - `externalUrl` streams are skipped.
-- Addon configuration web UIs are not embedded; users paste configured manifest URLs.
+- Addon configuration web UIs are not embedded; users paste configured manifest URLs. Some addons
+  reject malformed config blobs with `401 invalid session` even though their `/manifest.json` is a
+  catch-all stub — such an addon fetches a manifest but yields no streams.
 - The provider advertises `TvType.Others` (not episode-based) while still returning
   `Movie`/`TvSeries` items, so CloudStream lists it under a dedicated category instead of mixing it
   into Movies/Series. `loadLinksTimeoutMs` is raised to 180 s; individual network calls use

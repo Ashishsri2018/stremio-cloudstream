@@ -70,6 +70,8 @@ class StremioProvider : MainAPI() {
         val referer: String,
         val quality: Int,
         val label: String,
+        /** True when [url] is a magnet URI (infoHash-only stream). */
+        val torrent: Boolean,
     )
 
     private val linkTypeCache = ConcurrentHashMap<String, ExtractorLinkType>()
@@ -384,7 +386,11 @@ class StremioProvider : MainAPI() {
     ): List<LinkCandidate> {
         val candidates = ArrayList<LinkCandidate>(streams.size)
         for (stream in streams) {
-            val playbackUrl = StremioMapping.playbackUrlFor(stream) ?: continue
+            // Debrid/direct addons carry a `url`; plain torrent addons only an `infoHash`.
+            // The latter becomes a magnet, which Cloudstream's bundled torrent server plays.
+            val playbackUrl = StremioMapping.playbackUrlFor(stream)
+                ?: StremioMapping.torrentUrlFor(stream)
+                ?: continue
             val headers = StremioMapping.requestHeadersFor(stream)
             val qualityValue = StremioMapping.parseQuality(
                 stream.title, stream.name, stream.behaviorHints?.filename
@@ -401,6 +407,7 @@ class StremioProvider : MainAPI() {
                     referer = StremioMapping.extractReferer(headers),
                     quality = if (qualityValue > 0) qualityValue else Qualities.Unknown.value,
                     label = label,
+                    torrent = StremioMapping.isTorrentUrl(playbackUrl),
                 )
             )
             if (subtitleHash.get() == null && subtitleSize.get() == null) {
@@ -452,6 +459,8 @@ class StremioProvider : MainAPI() {
         probeSemaphore: Semaphore,
         probeBudget: AtomicInteger,
     ): ExtractorLinkType {
+        // Magnets are handed to Cloudstream's built-in torrent engine; never probe them.
+        if (candidate.torrent) return ExtractorLinkType.MAGNET
         linkTypeCache[candidate.url]?.let { return it }
         when (StremioMapping.guessStreamKind(candidate.url, candidate.stream.behaviorHints?.filename)) {
             StremioMapping.StreamKind.HLS -> return ExtractorLinkType.M3U8

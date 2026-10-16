@@ -40,8 +40,11 @@ Paste either a base URL (`https://addon.example`) or a full manifest URL
   Content type is sniffed for extension-less URLs (typical for debrid links).
 - **Debrid-configured addons** (e.g. Torrentio with `realdebrid=KEY` baked into the manifest URL)
   return direct URLs, so they work out of the box.
-- **Skipped for now**: `infoHash` magnets (plain torrent addons without debrid), `externalUrl`,
-  and addon configuration UIs. YouTube (`ytId`) links are opened as YouTube URLs.
+- **P2P / torrent addons** (e.g. Meteor, Torrentio without debrid): `infoHash` streams are converted
+  to a magnet and handed to CloudStream's built-in torrent engine, which streams them from a local
+  server. CloudStream asks for consent before starting a torrent session.
+- **Skipped for now**: `externalUrl` streams and addon configuration UIs. YouTube (`ytId`) links
+  are opened as YouTube URLs.
 
 ## Example addons
 
