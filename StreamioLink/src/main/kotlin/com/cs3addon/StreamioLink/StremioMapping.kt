@@ -14,6 +14,15 @@ object StremioMapping {
 
     val SUPPORTED_MEDIA_TYPES = setOf("movie", "series")
 
+    /**
+     * Stremio CDNs (e.g. the `hakunaymatata.com` hosts behind MovieBox/VidLink) return
+     * HTTP 428 when the request carries a Mozilla/browser User-Agent, but 200 for
+     * non-browser agents. [DEFAULT_STREAM_USER_AGENT] is applied to streams whose addon
+     * does not specify its own User-Agent so Cloudstream does not fall back to its
+     * global Mozilla UA.
+     */
+    const val DEFAULT_STREAM_USER_AGENT = "okhttp/4.12.0"
+
     private val manifestSuffixRegex = Regex("""/manifest\.json/?$""", RegexOption.IGNORE_CASE)
     private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
     private val whitespaceRegex = Regex("""\s+""")
@@ -53,6 +62,15 @@ object StremioMapping {
 
     fun decodePayload(data: String): StremioPayload? = try {
         mapper.readValue(data, StremioPayload::class.java)
+    } catch (t: Throwable) {
+        null
+    }
+
+    fun encodeCatalogRef(type: String, catalogId: String): String =
+        mapper.writeValueAsString(StremioCatalogRef(type = type, id = catalogId))
+
+    fun decodeCatalogRef(data: String?): StremioCatalogRef? = try {
+        data?.takeIf { it.isNotBlank() }?.let { mapper.readValue(it, StremioCatalogRef::class.java) }
     } catch (t: Throwable) {
         null
     }
@@ -107,6 +125,12 @@ object StremioMapping {
         catalog.extra.orEmpty().forEach { it.name?.let { n -> names.add(n.lowercase()) } }
         catalog.extraSupported.orEmpty().forEach { names.add(it.lowercase()) }
         return "search" in names
+    }
+
+    /** True when the catalog advertises `skip`, meaning it can return more than one page. */
+    fun catalogSupportsSkip(catalog: StremioCatalog): Boolean {
+        if (catalog.extra.orEmpty().any { it.name?.equals("skip", ignoreCase = true) == true }) return true
+        return catalog.extraSupported.orEmpty().any { it.equals("skip", ignoreCase = true) }
     }
 
     // ---------------------------------------------------------------- url building
@@ -169,8 +193,11 @@ object StremioMapping {
         return null
     }
 
-    fun requestHeadersFor(stream: StremioStream): Map<String, String> =
-        stream.behaviorHints?.proxyHeaders?.request.orEmpty()
+    fun requestHeadersFor(stream: StremioStream): Map<String, String> {
+        val provided = stream.behaviorHints?.proxyHeaders?.request.orEmpty()
+        if (provided.keys.any { it.equals("User-Agent", ignoreCase = true) }) return provided
+        return provided + ("User-Agent" to DEFAULT_STREAM_USER_AGENT)
+    }
 
     fun extractReferer(headers: Map<String, String>): String =
         headers.entries.firstOrNull {

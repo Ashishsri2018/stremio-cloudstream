@@ -64,8 +64,16 @@ class StremioStreamTest {
         val headers = StremioMapping.requestHeadersFor(streams[0])
         assertEquals("TestUA", headers["User-Agent"])
         assertEquals("https://ref.example/", StremioMapping.extractReferer(headers))
-        assertTrue(StremioMapping.requestHeadersFor(streams[1]).isEmpty())
         assertEquals("", StremioMapping.extractReferer(emptyMap()))
+    }
+
+    @Test
+    fun appliesNonMozillaUserAgentWhenAddonOmitsOne() {
+        // Some Stremio CDNs return HTTP 428 for Mozilla UAs, so an addon-less stream
+        // must not fall back to Cloudstream's global browser UA.
+        val headers = StremioMapping.requestHeadersFor(streams[1])
+        assertEquals(StremioMapping.DEFAULT_STREAM_USER_AGENT, headers["User-Agent"])
+        assertTrue(!headers["User-Agent"]!!.startsWith("Mozilla"))
     }
 
     @Test

@@ -153,3 +153,13 @@ data class StremioPayload(
     @JsonProperty("id") val id: String,
     @JsonProperty("type") val type: String,
 )
+
+/**
+ * Identifies a single catalog. Travels through Cloudstream inside [MainPageData.data]
+ * so pagination requests can target one catalog at a time.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StremioCatalogRef(
+    @JsonProperty("type") val type: String,
+    @JsonProperty("id") val id: String,
+)

@@ -14,8 +14,15 @@ object StremioApi {
     private const val TAG = "StreamioLink"
     private const val MANIFEST_TTL_MS = 30 * 60 * 1000L
 
-    /** Timeout for a single addon request in milliseconds. */
-    const val REQUEST_TIMEOUT_MS = 15_000L
+    /** Timeout for manifest/catalog/meta requests — these are expected to be fast. */
+    const val DEFAULT_TIMEOUT_MS = 20_000L
+
+    /**
+     * Timeout for stream/subtitle requests. Addons such as PenguPlay aggregate many
+     * providers server-side and can legitimately take tens of seconds; a short cap here
+     * caused slow addons to be silently skipped.
+     */
+    const val STREAM_TIMEOUT_MS = 60_000L
 
     private data class CachedManifest(val manifest: StremioManifest, val fetchedAt: Long)
 
@@ -34,7 +41,7 @@ object StremioApi {
         }
 
         return try {
-            val json = request("$base/manifest.json") ?: return staleManifest(base)
+            val json = request("$base/manifest.json", DEFAULT_TIMEOUT_MS) ?: return staleManifest(base)
             val manifest = StremioMapping.parseManifest(json)
             cacheMutex.withLock { manifestCache[base] = CachedManifest(manifest, now) }
             manifest
@@ -49,7 +56,7 @@ object StremioApi {
 
     suspend fun getCatalog(base: String, type: String, catalogId: String, extra: String? = null): List<StremioMetaPreview> =
         try {
-            request(StremioMapping.buildCatalogUrl(base, type, catalogId, extra))
+            request(StremioMapping.buildCatalogUrl(base, type, catalogId, extra), DEFAULT_TIMEOUT_MS)
                 ?.let { StremioMapping.parseCatalog(it) }
                 .orEmpty()
         } catch (t: Throwable) {
@@ -59,7 +66,7 @@ object StremioApi {
 
     suspend fun getMeta(base: String, type: String, id: String): StremioMetaDetails? =
         try {
-            request(StremioMapping.buildMetaUrl(base, type, id))
+            request(StremioMapping.buildMetaUrl(base, type, id), DEFAULT_TIMEOUT_MS)
                 ?.let { StremioMapping.parseMeta(it) }
         } catch (t: Throwable) {
             Log.e(TAG, "Meta $id failed: ${t.message}")
@@ -68,7 +75,7 @@ object StremioApi {
 
     suspend fun getStreams(base: String, type: String, id: String): List<StremioStream> =
         try {
-            request(StremioMapping.buildStreamUrl(base, type, id))
+            request(StremioMapping.buildStreamUrl(base, type, id), STREAM_TIMEOUT_MS)
                 ?.let { StremioMapping.parseStreams(it) }
                 .orEmpty()
         } catch (t: Throwable) {
@@ -84,7 +91,7 @@ object StremioApi {
         videoSize: Long? = null,
     ): List<StremioSubtitle> =
         try {
-            request(StremioMapping.buildSubtitlesUrl(base, type, id, videoHash, videoSize))
+            request(StremioMapping.buildSubtitlesUrl(base, type, id, videoHash, videoSize), STREAM_TIMEOUT_MS)
                 ?.let { StremioMapping.parseSubtitles(it) }
                 .orEmpty()
         } catch (t: Throwable) {
@@ -92,8 +99,8 @@ object StremioApi {
             emptyList()
         }
 
-    private suspend fun request(url: String): String? =
-        kotlinx.coroutines.withTimeoutOrNull(REQUEST_TIMEOUT_MS) {
+    private suspend fun request(url: String, timeoutMs: Long): String? =
+        kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
             app.get(url).text
         }
 }

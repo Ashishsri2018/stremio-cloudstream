@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.MainPageData
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
@@ -26,11 +27,14 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Cloudstream provider that plays content through Stremio addons.
@@ -44,11 +48,12 @@ class StremioProvider : MainAPI() {
     override var lang = "en"
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes = setOf(TvType.Others)
+    override val loadLinksTimeoutMs = 180_000L
 
     private companion object {
         const val TAG = "StreamioLink"
-        const val PAGE_SIZE = 100
+        const val DEFAULT_PAGE_SIZE = 20
         const val MAX_PROBES = 15
         const val PROBE_CONCURRENCY = 5
         const val PROBE_TIMEOUT_MS = 3_500L
@@ -67,33 +72,118 @@ class StremioProvider : MainAPI() {
 
     private val linkTypeCache = ConcurrentHashMap<String, ExtractorLinkType>()
 
+    /** Single anonymous tab used until the catalog manifest has been read once. */
+    private val placeholderPage = listOf(MainPageData("", "", false))
+
+    /** Catalog tabs for the current catalog addon, populated on the first home load. */
+    @Volatile private var catalogTabs: List<MainPageData> = emptyList()
+
+    @Volatile private var catalogTabsBase: String? = null
+
+    /** Per-catalog item offset, advanced by the number of items the addon actually returned. */
+    private val catalogOffsets = ConcurrentHashMap<String, Int>()
+
+    override val mainPage: List<MainPageData>
+        get() {
+            // Tabs are only valid for the catalog addon they were fetched from; a URL change
+            // falls back to the single placeholder tab so the next home load refetches them.
+            if (catalogTabsBase != StremioSettings.catalogUrl()) return placeholderPage
+            return catalogTabs.ifEmpty { placeholderPage }
+        }
+
     // ---------------------------------------------------------------- home page
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val catalogBase = StremioSettings.catalogUrl()
+        val ref = StremioMapping.decodeCatalogRef(request.data)
+        // Cloudstream expands a row by asking for one catalog (encoded in request.data).
+        // The initial load has no ref and returns every catalog.
+        return if (ref != null) singleCatalogPage(catalogBase, ref, request.name, page)
+        else allCatalogsPage(catalogBase, page)
+    }
+
+    private suspend fun allCatalogsPage(catalogBase: String, page: Int): HomePageResponse? {
         val manifest = StremioApi.getManifest(catalogBase) ?: return newHomePageResponse(emptyList(), false)
         val catalogs = manifest.catalogs.orEmpty().filter { StremioMapping.catalogCanLoadHome(it) }
         if (catalogs.isEmpty()) return newHomePageResponse(emptyList(), false)
 
-        val extra = if (page > 1) "skip=${(page - 1) * PAGE_SIZE}" else null
+        if (catalogTabsBase != catalogBase) {
+            catalogOffsets.clear()
+            catalogTabsBase = catalogBase
+        }
+        catalogTabs = catalogs.mapNotNull { catalog ->
+            val type = catalog.type ?: return@mapNotNull null
+            val id = catalog.id ?: return@mapNotNull null
+            MainPageData(
+                name = catalogTitle(manifest, catalog, name),
+                data = StremioMapping.encodeCatalogRef(type, id),
+                horizontalImages = false,
+            )
+        }
+
         val rows = coroutineScope {
             catalogs.map { catalog ->
-                async {
-                    val type = catalog.type ?: return@async null
-                    val catalogId = catalog.id ?: return@async null
-                    try {
-                        val items = StremioApi.getCatalog(catalogBase, type, catalogId, extra)
-                            .mapNotNull { toSearchResponse(it, type) }
-                        if (items.isEmpty()) null
-                        else HomePageList(catalogTitle(manifest, catalog, name), items)
-                    } catch (t: Throwable) {
-                        Log.e(TAG, "Home catalog $catalogId failed: ${t.message}")
-                        null
-                    }
-                }
+                async { fetchCatalogRow(catalogBase, manifest, catalog, page) }
             }.awaitAll().filterNotNull()
         }
-        return newHomePageResponse(rows, false)
+        val hasNext = catalogs.any { StremioMapping.catalogSupportsSkip(it) }
+        return newHomePageResponse(rows, hasNext)
+    }
+
+    private suspend fun singleCatalogPage(
+        catalogBase: String,
+        ref: StremioCatalogRef,
+        requestName: String,
+        page: Int,
+    ): HomePageResponse? {
+        val key = StremioMapping.encodeCatalogRef(ref.type, ref.id)
+        val manifest = StremioApi.getManifest(catalogBase)
+        val catalog = manifest?.catalogs.orEmpty()
+            .firstOrNull { it.id == ref.id && it.type.equals(ref.type, ignoreCase = true) }
+        val skipSupported = catalog?.let { StremioMapping.catalogSupportsSkip(it) } == true
+        // A catalog that cannot paginate returns its first page for every `skip`, so asking
+        // for page 2+ would only duplicate rows the app has no way to dedupe.
+        if (page > 1 && !skipSupported) return newHomePageResponse(emptyList(), false)
+
+        // page 1 is a fresh (re)load, restart from the top; later pages continue the offset.
+        val offset = if (page <= 1) 0 else (catalogOffsets[key] ?: ((page - 1) * DEFAULT_PAGE_SIZE))
+        val items = try {
+            StremioApi.getCatalog(catalogBase, ref.type, ref.id, if (offset > 0) "skip=$offset" else null)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Catalog ${ref.id} page $page failed: ${t.message}")
+            emptyList()
+        }
+
+        if (skipSupported) catalogOffsets[key] = offset + items.size
+
+        val searches = items.mapNotNull { toSearchResponse(it, ref.type) }
+        if (searches.isEmpty()) return newHomePageResponse(emptyList(), false)
+        val title = requestName.takeIf { it.isNotBlank() }
+            ?: (manifest?.let { catalog?.let { c -> catalogTitle(it, c, name) } })
+            ?: ref.id
+        return newHomePageResponse(listOf(HomePageList(title, searches)), skipSupported)
+    }
+
+    private suspend fun fetchCatalogRow(
+        catalogBase: String,
+        manifest: StremioManifest,
+        catalog: StremioCatalog,
+        page: Int,
+    ): HomePageList? {
+        val type = catalog.type ?: return null
+        val id = catalog.id ?: return null
+        val key = StremioMapping.encodeCatalogRef(type, id)
+        val offset = if (page > 1) (catalogOffsets[key] ?: ((page - 1) * DEFAULT_PAGE_SIZE)) else 0
+        val items = try {
+            StremioApi.getCatalog(catalogBase, type, id, if (offset > 0) "skip=$offset" else null)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Home catalog $id failed: ${t.message}")
+            return null
+        }
+        if (StremioMapping.catalogSupportsSkip(catalog)) catalogOffsets[key] = offset + items.size
+        val searches = items.mapNotNull { toSearchResponse(it, type) }
+        if (searches.isEmpty()) return null
+        return HomePageList(catalogTitle(manifest, catalog, name), searches)
     }
 
     private fun catalogTitle(manifest: StremioManifest, catalog: StremioCatalog, providerName: String): String {
@@ -224,85 +314,97 @@ class StremioProvider : MainAPI() {
             .distinct()
         if (addonBases.isEmpty()) return false
 
-        val manifests = coroutineScope {
-            addonBases.map { base ->
-                async { base to StremioApi.getManifest(base) }
-            }.awaitAll()
-        }.mapNotNull { (base, manifest) -> manifest?.let { base to it } }.toMap()
-
         val type = payload.type.lowercase()
-        val streamAddons = manifests.filter { (_, manifest) ->
-            StremioMapping.manifestSupportsResource(manifest, "stream") &&
-                type in StremioMapping.resourceTypesFor(manifest, "stream").map { it.lowercase() } &&
-                StremioMapping.idMatchesPrefixes(payload.id, StremioMapping.resourceIdPrefixesFor(manifest, "stream"))
-        }
+        val manifests = ConcurrentHashMap<String, StremioManifest>()
+        val found = AtomicBoolean(false)
+        val emitted = AtomicInteger(0)
+        val probeBudget = AtomicInteger(MAX_PROBES)
+        val probeSemaphore = Semaphore(PROBE_CONCURRENCY)
+        val subtitleProbeHash = AtomicReference<String?>(null)
+        val subtitleProbeSize = AtomicReference<Long?>(null)
 
-        val streamsByAddon = coroutineScope {
-            streamAddons.map { (base, manifest) ->
-                async {
+        // Fan out per addon. Each addon emits its links as soon as it responds so a slow
+        // addon never blocks the fast ones and is still waited for (up to STREAM_TIMEOUT_MS).
+        coroutineScope {
+            addonBases.forEach { base ->
+                launch {
+                    val manifest = StremioApi.getManifest(base) ?: return@launch
+                    manifests[base] = manifest
+
+                    val supportsStream = StremioMapping.manifestSupportsResource(manifest, "stream") &&
+                        type in StremioMapping.resourceTypesFor(manifest, "stream").map { it.lowercase() } &&
+                        StremioMapping.idMatchesPrefixes(
+                            payload.id,
+                            StremioMapping.resourceIdPrefixesFor(manifest, "stream")
+                        )
+                    if (!supportsStream) return@launch
+
                     val addonName = manifest.name?.takeIf { it.isNotBlank() } ?: hostOf(base)
-                    addonName to StremioApi.getStreams(base, type, payload.id)
-                }
-            }.awaitAll()
-        }
-
-        val candidates = mutableListOf<LinkCandidate>()
-        var subtitleProbeHash: String? = null
-        var subtitleProbeSize: Long? = null
-
-        for ((addonName, streams) in streamsByAddon) {
-            for (stream in streams) {
-                if (candidates.size >= MAX_LINKS) break
-                val playbackUrl = StremioMapping.playbackUrlFor(stream) ?: continue
-                val headers = StremioMapping.requestHeadersFor(stream)
-                val qualityValue = StremioMapping.parseQuality(
-                    stream.title, stream.name, stream.behaviorHints?.filename
-                )
-                val displayName = StremioMapping.streamDisplayName(stream).orEmpty().ifBlank { "Stream" }
-                val label = if (displayName.contains(addonName, ignoreCase = true)) displayName
-                else "[$addonName] $displayName"
-                candidates.add(
-                    LinkCandidate(
-                        addonName = addonName,
-                        stream = stream,
-                        url = playbackUrl,
-                        headers = headers,
-                        referer = StremioMapping.extractReferer(headers),
-                        quality = if (qualityValue > 0) qualityValue else Qualities.Unknown.value,
-                        label = label,
-                    )
-                )
-                if (subtitleProbeHash == null && subtitleProbeSize == null) {
-                    stream.behaviorHints?.videoHash?.takeIf { it.isNotBlank() }?.let { subtitleProbeHash = it }
-                    stream.behaviorHints?.videoSize?.takeIf { it > 0 }?.let { subtitleProbeSize = it }
+                    val streams = StremioApi.getStreams(base, type, payload.id)
+                    for (candidate in candidatesFor(addonName, streams, subtitleProbeHash, subtitleProbeSize)) {
+                        if (emitted.incrementAndGet() > MAX_LINKS) break
+                        val linkType = resolveLinkType(candidate, probeSemaphore, probeBudget)
+                        callback.invoke(
+                            newExtractorLink(candidate.addonName, candidate.label, candidate.url, linkType) {
+                                this.quality = candidate.quality
+                                this.referer = candidate.referer
+                                this.headers = candidate.headers
+                            }
+                        )
+                        found.set(true)
+                    }
                 }
             }
         }
 
-        emitSubtitleLinks(payload, manifests, subtitleProbeHash, subtitleProbeSize, subtitleCallback)
+        emitSubtitleLinks(
+            payload,
+            manifests,
+            subtitleProbeHash.get(),
+            subtitleProbeSize.get(),
+            subtitleCallback,
+        )
 
-        if (candidates.isEmpty()) return true
+        return found.get()
+    }
 
-        val probeBudget = AtomicInteger(MAX_PROBES)
-        val probeSemaphore = Semaphore(PROBE_CONCURRENCY)
-        val resolved = coroutineScope {
-            candidates.map { candidate ->
-                async { candidate to resolveLinkType(candidate, probeSemaphore, probeBudget) }
-            }.awaitAll()
-        }
-
-        var found = false
-        for ((candidate, linkType) in resolved) {
-            callback.invoke(
-                newExtractorLink(candidate.addonName, candidate.label, candidate.url, linkType) {
-                    this.quality = candidate.quality
-                    this.referer = candidate.referer
-                    this.headers = candidate.headers
-                }
+    private fun candidatesFor(
+        addonName: String,
+        streams: List<StremioStream>,
+        subtitleHash: AtomicReference<String?>,
+        subtitleSize: AtomicReference<Long?>,
+    ): List<LinkCandidate> {
+        val candidates = ArrayList<LinkCandidate>(streams.size)
+        for (stream in streams) {
+            val playbackUrl = StremioMapping.playbackUrlFor(stream) ?: continue
+            val headers = StremioMapping.requestHeadersFor(stream)
+            val qualityValue = StremioMapping.parseQuality(
+                stream.title, stream.name, stream.behaviorHints?.filename
             )
-            found = true
+            val displayName = StremioMapping.streamDisplayName(stream).orEmpty().ifBlank { "Stream" }
+            val label = if (displayName.contains(addonName, ignoreCase = true)) displayName
+            else "[$addonName] $displayName"
+            candidates.add(
+                LinkCandidate(
+                    addonName = addonName,
+                    stream = stream,
+                    url = playbackUrl,
+                    headers = headers,
+                    referer = StremioMapping.extractReferer(headers),
+                    quality = if (qualityValue > 0) qualityValue else Qualities.Unknown.value,
+                    label = label,
+                )
+            )
+            if (subtitleHash.get() == null && subtitleSize.get() == null) {
+                stream.behaviorHints?.videoHash?.takeIf { it.isNotBlank() }?.let {
+                    subtitleHash.compareAndSet(null, it)
+                }
+                stream.behaviorHints?.videoSize?.takeIf { it > 0 }?.let {
+                    subtitleSize.compareAndSet(null, it)
+                }
+            }
         }
-        return found
+        return candidates
     }
 
     private suspend fun emitSubtitleLinks(

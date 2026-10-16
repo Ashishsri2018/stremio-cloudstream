@@ -88,6 +88,29 @@ class StremioManifestTest {
     }
 
     @Test
+    fun detectsSkipCapableCatalogs() {
+        val byId = catalogs.associateBy { it.id }
+        assertTrue(StremioMapping.catalogSupportsSkip(byId.getValue("oldformat")))
+        assertFalse(StremioMapping.catalogSupportsSkip(byId.getValue("top")))
+        assertFalse(StremioMapping.catalogSupportsSkip(byId.getValue("searchable")))
+        assertTrue(
+            StremioMapping.catalogSupportsSkip(
+                StremioCatalog(type = "movie", id = "trending", extra = listOf(StremioExtra(name = "skip")))
+            )
+        )
+    }
+
+    @Test
+    fun roundTripsCatalogRefs() {
+        val encoded = StremioMapping.encodeCatalogRef("series", "trending-series")
+        val decoded = StremioMapping.decodeCatalogRef(encoded)
+        assertEquals("series", decoded?.type)
+        assertEquals("trending-series", decoded?.id)
+        assertNull(StremioMapping.decodeCatalogRef(""))
+        assertNull(StremioMapping.decodeCatalogRef("not json"))
+    }
+
+    @Test
     fun buildsProtocolUrls() {
         val base = "https://addon.example"
         assertEquals("$base/catalog/movie/top.json", StremioMapping.buildCatalogUrl(base, "movie", "top"))
