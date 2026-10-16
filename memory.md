@@ -133,5 +133,34 @@
 - Fix: added `title` to `StremioVideo`; new `StremioMapping.episodeName(video)` prefers
   `name` then `title`; `toEpisode` uses it before the id fallback. Unit test covers the fallback.
 
+## 2026-10-16 — remove per-link HEAD probe + short stream cache (client strain) — version 8
+- User report: only hdhub (direct signed CDN) is "smooth"; pengu is slow, cnc unreliable, and
+  meteor fails. Live-tested all four (catalog nuvio, movie tt0111161) — URLs saved in
+  `tools/test-addons.json` for future playtests. Findings (sandbox had a constant ~5 s DNS
+  penalty, so compare deltas):
+  - hdhub: direct `r2.cloudflarestorage.com` + pixeldrain links, fast. 2 links are `hubcloud.ist`
+    HTML landing pages.
+  - pengu: every link is `pengu.uk/direct/...` which 307-redirects (~8 s server-side) to the
+    **same** `r2.../hub/<key>` objects hdhub already returns (pengu is a slow proxy over the same
+    CDN). 49 links/movie.
+  - cnc (CNCVerse Bridge): ~1/3 links dead (404, connection refused, `text/html`), one URL with
+    literal spaces. Servers themselves are fast.
+  - meteor: `/{config}/stream/...` returns `401 invalid session` after ~6 s with the user's blob
+    because `languageFormat` is an array `["flags"]`; a string works (see the v6 note).
+- Root cause of the plugin's own slowness: `resolveLinkType` did a serial `app.head()` per
+  candidate before emitting it. Tested HEAD responses: hdhub R2 **403**, cnc **404**, pengu
+  **403 after 12 s** — so the probe almost always fell through to VIDEO anyway, while adding up to
+  `PROBE_TIMEOUT_MS` (3.5 s) × candidates, serialized per addon. HLS/DASH was already detected
+  from the URL/filename in every real case.
+- Fix: `StremioProvider.linkTypeFor` now classifies purely from `guessStreamKind` (no network, no
+  suspend, no `linkTypeCache`/semaphore/budget). `StremioMapping.guessStreamKind` also scans the
+  full URL (catches `.m3u8` hidden in a proxy query) and `/hls`, `/playlist`, `mpegurl` hints.
+- Added a 5-minute in-memory stream-JSON cache in `StremioApi` (key `base|type|id`, only non-empty
+  results, cap 64) so replaying/re-opening an episode does not refetch slow addons.
+- Deliberately NOT changed (user's call — keep the client light, let servers dedupe/filter): no
+  cross-addon dedup, no liveness filtering, no P2P opt-out. Addon-side limits remain: pengu's ~8 s
+  redirect is paid at playback, cnc dead links still appear, meteor's broken config is user-side.
+
+
 
 

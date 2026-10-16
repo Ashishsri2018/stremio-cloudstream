@@ -12,7 +12,6 @@ import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.addDate
-import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
@@ -30,9 +29,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -56,9 +52,6 @@ class StremioProvider : MainAPI() {
     private companion object {
         const val TAG = "StreamioLink"
         const val DEFAULT_PAGE_SIZE = 20
-        const val MAX_PROBES = 15
-        const val PROBE_CONCURRENCY = 5
-        const val PROBE_TIMEOUT_MS = 3_500L
         const val MAX_LINKS = 120
     }
 
@@ -73,8 +66,6 @@ class StremioProvider : MainAPI() {
         /** True when [url] is a magnet URI (infoHash-only stream). */
         val torrent: Boolean,
     )
-
-    private val linkTypeCache = ConcurrentHashMap<String, ExtractorLinkType>()
 
     /** Single anonymous tab used until the catalog manifest has been read once. */
     private val placeholderPage = listOf(MainPageData("", "", false))
@@ -322,8 +313,6 @@ class StremioProvider : MainAPI() {
         val manifests = ConcurrentHashMap<String, StremioManifest>()
         val found = AtomicBoolean(false)
         val emitted = AtomicInteger(0)
-        val probeBudget = AtomicInteger(MAX_PROBES)
-        val probeSemaphore = Semaphore(PROBE_CONCURRENCY)
         val subtitleProbeHash = AtomicReference<String?>(null)
         val subtitleProbeSize = AtomicReference<Long?>(null)
 
@@ -349,9 +338,13 @@ class StremioProvider : MainAPI() {
                         val streams = StremioApi.getStreams(base, type, payload.id)
                         for (candidate in candidatesFor(addonName, streams, subtitleProbeHash, subtitleProbeSize)) {
                             if (emitted.incrementAndGet() > MAX_LINKS) break
-                            val linkType = resolveLinkType(candidate, probeSemaphore, probeBudget)
                             callback.invoke(
-                                newExtractorLink(candidate.addonName, candidate.label, candidate.url, linkType) {
+                                newExtractorLink(
+                                    candidate.addonName,
+                                    candidate.label,
+                                    candidate.url,
+                                    linkTypeFor(candidate),
+                                ) {
                                     this.quality = candidate.quality
                                     this.referer = candidate.referer
                                     this.headers = candidate.headers
@@ -454,42 +447,20 @@ class StremioProvider : MainAPI() {
         }
     }
 
-    private suspend fun resolveLinkType(
-        candidate: LinkCandidate,
-        probeSemaphore: Semaphore,
-        probeBudget: AtomicInteger,
-    ): ExtractorLinkType {
-        // Magnets are handed to Cloudstream's built-in torrent engine; never probe them.
+    /**
+     * Link type is derived purely from the URL/filename: no network probe. Probing every
+     * candidate with a HEAD request was a large, mostly wasted cost on the device (the
+     * tested hosts answer HEAD with 403/404, so the probe almost always fell back to
+     * `VIDEO` anyway) and delayed emission by up to `PROBE_TIMEOUT_MS` per candidate,
+     * serialized per addon. Magnets are handed to Cloudstream's torrent engine.
+     */
+    private fun linkTypeFor(candidate: LinkCandidate): ExtractorLinkType {
         if (candidate.torrent) return ExtractorLinkType.MAGNET
-        linkTypeCache[candidate.url]?.let { return it }
-        when (StremioMapping.guessStreamKind(candidate.url, candidate.stream.behaviorHints?.filename)) {
-            StremioMapping.StreamKind.HLS -> return ExtractorLinkType.M3U8
-            StremioMapping.StreamKind.DASH -> return ExtractorLinkType.DASH
-            StremioMapping.StreamKind.VIDEO -> Unit
+        return when (StremioMapping.guessStreamKind(candidate.url, candidate.stream.behaviorHints?.filename)) {
+            StremioMapping.StreamKind.HLS -> ExtractorLinkType.M3U8
+            StremioMapping.StreamKind.DASH -> ExtractorLinkType.DASH
+            StremioMapping.StreamKind.VIDEO -> ExtractorLinkType.VIDEO
         }
-        if (probeBudget.decrementAndGet() < 0) return ExtractorLinkType.VIDEO
-
-        val linkType = probeSemaphore.withPermit {
-            try {
-                val response = withTimeoutOrNull(PROBE_TIMEOUT_MS) {
-                    app.head(candidate.url, headers = candidate.headers, referer = candidate.referer)
-                }
-                val contentType = (
-                    response?.headers?.get("Content-Type")
-                        ?: response?.headers?.get("content-type")
-                        ?: ""
-                    ).lowercase()
-                when {
-                    contentType.contains("mpegurl") || contentType.contains("m3u8") -> ExtractorLinkType.M3U8
-                    contentType.contains("dash") -> ExtractorLinkType.DASH
-                    else -> ExtractorLinkType.VIDEO
-                }
-            } catch (t: Throwable) {
-                ExtractorLinkType.VIDEO
-            }
-        }
-        if (linkTypeCache.size < 256) linkTypeCache[candidate.url] = linkType
-        return linkType
     }
 
     private fun hostOf(base: String): String =

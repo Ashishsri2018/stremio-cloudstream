@@ -1,0 +1,30 @@
+{
+  "_comment": "Live addons used to playtest StreamioLink. Catalog = nuvio, sources = the four addons under test. The plugin accepts either the base URL or the manifest.json URL. Test movie: tt0111161 (The Shawshank Redemption).",
+  "testId": "tt0111161",
+  "catalog": {
+    "name": "Nuvio",
+    "url": "https://catalog.nuvio.tv/manifest.json"
+  },
+  "sources": [
+    {
+      "name": "hdhub",
+      "url": "https://hdhub.thevolecitor.qzz.io/eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjcyMHAsNDgwcCIsInNvcnQiOiJhc2MiLCJjYXRhbG9ncyI6IiJ9/manifest.json",
+      "notes": "Direct signed CDN links (R2 + pixeldrain). Fast and reliable."
+    },
+    {
+      "name": "pengu",
+      "url": "https://pengu.uk/%7B%22auth_token%22%3A%22Mhkey_5NPtZD01O6einoPmxDRaMjnFGKCvfPNBoWReQ%22%7D/manifest.json",
+      "notes": "Aggregator; links are pengu.uk/direct/... 307 redirects to the same CDN objects hdhub returns (~8s redirect)."
+    },
+    {
+      "name": "cnc",
+      "url": "https://cncverse.dpdns.org/u/p_l0uq0xtenbo7/manifest.json",
+      "notes": "CNCVerse Bridge. Many links; ~1/3 dead (404 / connection refused / HTML). Source-only (all catalogs are type other/tv)."
+    },
+    {
+      "name": "meteor",
+      "url": "https://meteorfortheweebs.midnightignite.me/eyJjYWNoZWRPbmx5IjpmYWxzZSwic2tpcFJlbGVhc2VGaWx0ZXIiOnRydWUsInJlbW92ZVRyYXNoIjpmYWxzZSwicmVtb3ZlU2FtcGxlcyI6ZmFsc2UsImFsbG93QWR1bHQiOnRydWUsImV4Y2x1ZGUzRCI6ZmFsc2UsImVuYWJsZVNlYURleCI6ZmFsc2UsInNob3dZb3VyTWVkaWEiOmZhbHNlLCJ5b3VyTWVkaWFMZWdhY3lNb2RlIjpmYWxzZSwibWluU2VlZGVycyI6MCwibWF4UmVzdWx0cyI6MCwibWF4UGVyUmVzb2x1dGlvbiI6MCwicmVzb2x1dGlvbnMiOltdLCJwcmVmZXJyZWRMYW5ncyI6WyJlbiIsIm11bHRpIiwiaGkiXSwibGFuZ3VhZ2VzIjpbXSwiZXhjbHVkZWRMYW5ncyI6W10sInJlc3VsdEZvcm1hdCI6WyJ0aXRsZSIsInF1YWxpdHkiLCJzaXplIiwiYXVkaW8iXSwibGFuZ3VhZ2VGb3JtYXQiOlsiZmxhZ3MiXSwic29ydE9yZGVyIjpbImNhY2hlZCIsInNlZWRleCIsIi1yZXNvbHV0aW9uIiwiLXF1YWxpdHkiLCJsYW5ndWFnZSIsInNlZWRlcnMiLCItc2l6ZSIsInBhY2siXSwiYWxsb3dQMlAiOnRydWUsImV4Y2x1ZGVkU291cmNlcyI6W119/manifest.json",
+      "notes": "P2P torrent addon. This config blob is broken: languageFormat is an array, so /stream/* returns 401 'invalid session'. Regenerate with languageFormat as a string (\"flags\")."
+    }
+  ]
+}

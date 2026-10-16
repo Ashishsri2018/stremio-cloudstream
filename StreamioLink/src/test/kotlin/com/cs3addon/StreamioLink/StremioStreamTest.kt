@@ -147,6 +147,27 @@ class StremioStreamTest {
     }
 
     @Test
+    fun guessesHlsBehindProxyOrPlainPaths() {
+        // Extension only appears inside the query of a plain proxy (CNCVerse style).
+        assertEquals(
+            StremioMapping.StreamKind.HLS,
+            StremioMapping.guessStreamKind(
+                "http://140.238.244.130/proxy/bound?d=https%3A%2F%2Ftv.imgcdn.kim%2Fnewtv%2Fhls%2Fnf%2F70005379.m3u8%3Fin%3D1"
+            )
+        )
+        // Common HLS path hints with no extension at all (PenguPlay style).
+        assertEquals(
+            StremioMapping.StreamKind.HLS,
+            StremioMapping.guessStreamKind("https://pengu.example/hls/cinejoy/playlist/vOxb5wvXd8Y/")
+        )
+        // A direct video file must not be mistaken for HLS.
+        assertEquals(
+            StremioMapping.StreamKind.VIDEO,
+            StremioMapping.guessStreamKind("https://cdn.example/hub/abc123?X-Amz-Expires=28800")
+        )
+    }
+
+    @Test
     fun parsesQualityFromAddonText() {
         assertEquals(1080, StremioMapping.parseQuality("Movie.2024.1080p.WEB-DL"))
         assertEquals(1080, StremioMapping.parseQuality("FullHD"))

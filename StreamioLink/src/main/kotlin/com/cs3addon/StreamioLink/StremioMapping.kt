@@ -174,14 +174,20 @@ object StremioMapping {
     enum class StreamKind { HLS, DASH, VIDEO }
 
     fun guessStreamKind(url: String, filename: String? = null): StreamKind {
-        val path = url.substringBefore('?').substringBefore('#').lowercase()
+        val lower = url.lowercase()
+        val path = lower.substringBefore('?').substringBefore('#')
         val name = filename?.lowercase().orEmpty()
         // Addons such as PenguPlay append metadata after the extension
         // (e.g. "movie.mkv|^|720p..."), so check for the marker anywhere
-        // instead of only at the end of the string.
+        // instead of only at the end of the string. The full URL is scanned last so
+        // extension-less playlists behind a plain proxy are still recognised
+        // (e.g. `.../proxy/bound?d=...%2F...m3u8`), and common `/hls/` paths are hints.
+        val hls = path.contains(".m3u8") || name.contains(".m3u8") || lower.contains(".m3u8") ||
+            path.contains("/hls") || path.contains("/playlist") || lower.contains("mpegurl")
+        val dash = path.contains(".mpd") || name.contains(".mpd") || lower.contains(".mpd")
         return when {
-            path.contains(".m3u8") || name.contains(".m3u8") -> StreamKind.HLS
-            path.contains(".mpd") || name.contains(".mpd") -> StreamKind.DASH
+            hls -> StreamKind.HLS
+            dash -> StreamKind.DASH
             else -> StreamKind.VIDEO
         }
     }

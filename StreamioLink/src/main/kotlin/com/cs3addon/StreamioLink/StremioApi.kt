@@ -4,6 +4,7 @@ import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Thin HTTP layer for the Stremio addon protocol.
@@ -28,6 +29,19 @@ object StremioApi {
 
     private val manifestCache = mutableMapOf<String, CachedManifest>()
     private val cacheMutex = Mutex()
+
+    /**
+     * Streams are the slowest and heaviest addon call (aggregators take 10-30 s server-side).
+     * A short-lived in-memory cache means re-opening an episode or retrying a link does not
+     * hammer the addons again. Only successful, non-empty results are cached so a transient
+     * failure is not remembered.
+     */
+    private const val STREAM_CACHE_TTL_MS = 5 * 60 * 1000L
+    private const val STREAM_CACHE_MAX = 64
+
+    private data class CachedStreams(val streams: List<StremioStream>, val fetchedAt: Long)
+
+    private val streamCache = ConcurrentHashMap<String, CachedStreams>()
 
     suspend fun getManifest(rawUrl: String?): StremioManifest? {
         val base = StremioMapping.normalizeAddonUrl(rawUrl) ?: return null
@@ -73,15 +87,27 @@ object StremioApi {
             null
         }
 
-    suspend fun getStreams(base: String, type: String, id: String): List<StremioStream> =
-        try {
-            request(StremioMapping.buildStreamUrl(base, type, id), STREAM_TIMEOUT_MS)
+    suspend fun getStreams(base: String, type: String, id: String): List<StremioStream> {
+        val key = "$base|$type|$id"
+        val now = System.currentTimeMillis()
+        streamCache[key]
+            ?.takeIf { now - it.fetchedAt < STREAM_CACHE_TTL_MS }
+            ?.let { return it.streams }
+
+        return try {
+            val streams = request(StremioMapping.buildStreamUrl(base, type, id), STREAM_TIMEOUT_MS)
                 ?.let { StremioMapping.parseStreams(it) }
                 .orEmpty()
+            if (streams.isNotEmpty()) {
+                if (streamCache.size >= STREAM_CACHE_MAX) streamCache.clear()
+                streamCache[key] = CachedStreams(streams, now)
+            }
+            streams
         } catch (t: Throwable) {
             Log.e(TAG, "Streams for $id failed on $base: ${t.message}")
             emptyList()
         }
+    }
 
     suspend fun getSubtitles(
         base: String,

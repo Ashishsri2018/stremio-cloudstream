@@ -37,7 +37,8 @@ Paste either a base URL (`https://addon.example`) or a full manifest URL
 ## What plays
 
 - **Direct HTTP(S) streams**: HLS (`.m3u8`), DASH (`.mpd`) and progressive files (`mp4`/`mkv`/...).
-  Content type is sniffed for extension-less URLs (typical for debrid links).
+  The kind is detected from the URL/filename (no network probe), so extension-less debrid links
+  are handled without extra requests.
 - **Debrid-configured addons** (e.g. Torrentio with `realdebrid=KEY` baked into the manifest URL)
   return direct URLs, so they work out of the box.
 - **P2P / torrent addons** (e.g. Meteor, Torrentio without debrid): `infoHash` streams are converted
