@@ -34,6 +34,9 @@ object StremioApi {
      */
     private const val FAIL_BACKOFF_MS = 30_000L
 
+    /** Cap on remembered failing URLs; expired entries are evicted on the next failure. */
+    private const val FAIL_CACHE_MAX = 256
+
     private data class CachedManifest(val manifest: StremioManifest, val fetchedAt: Long)
 
     private val manifestCache = mutableMapOf<String, CachedManifest>()
@@ -67,7 +70,12 @@ object StremioApi {
     }
 
     private fun markFailure(key: String) {
-        failedUntil[key] = System.currentTimeMillis() + FAIL_BACKOFF_MS
+        val now = System.currentTimeMillis()
+        failedUntil.entries.removeAll { it.value <= now }
+        if (failedUntil.size >= FAIL_CACHE_MAX) {
+            failedUntil.entries.minByOrNull { it.value }?.let { failedUntil.remove(it.key, it.value) }
+        }
+        failedUntil[key] = now + FAIL_BACKOFF_MS
     }
 
     private fun clearFailure(key: String) {

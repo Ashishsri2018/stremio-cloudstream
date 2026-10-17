@@ -36,7 +36,11 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    at once opened as many sockets. `getMainPageTimeoutMs = 90 s` / `searchTimeoutMs = 60 s` cap a
    stuck catalog. (Lazy row loading is **not** possible: CloudStream's `HomeViewModel.load()` calls
    `getMainPage(1, null)` once and renders every returned row; expansion only paginates existing rows.)
-2. Courses: search-capable catalogs → `/catalog/{type}/{id}/search=...json` (falls back to meta addon).
+2. Search: search-capable catalogs → `/catalog/{type}/{id}/search=...json` (falls back to meta addon).
+   Quick search is **not** implemented: `hasQuickSearch` is left at its default `false`, so the
+   single-provider quick-search screen (reached from the home search icon) searches on submit via the
+   normal `search()` path instead of on every keystroke. Advertising it without overriding
+   `quickSearch` would call CloudStream's default, which throws `NotImplementedError`.
 3. Load: `/meta/{type}/{id}.json` (catalog addon, then fallback) → movie page or episode list.
 4. Links: all source addons declared `stream` resource and matching type/idPrefixes are queried
    in parallel **per addon** (`supervisorScope`, so one addon's failure cannot cancel the others) —
@@ -47,7 +51,11 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    drops slow aggregators. URL streams become `ExtractorLink`s; the kind (M3U8/DASH/VIDEO) is
    derived purely from the URL/filename via `StremioMapping.guessStreamKind` — there is **no**
    per-link network probe (a HEAD probe was mostly wasted: the tested hosts answer HEAD with
-   403/404 and it delayed emission). Stream JSON is cached in memory per addon/id for 5 minutes
+   403/404 and it delayed emission). `guessStreamKind` treats explicit extensions as authoritative
+   over semantic path hints: `.mpd` → DASH and `.m3u8` → HLS win outright, a known video-container
+   extension (`.mp4/.mkv/.webm/…`) → VIDEO, and only then do the `/hls`, `/playlist`, `mpegurl`
+   path hints and a `.m3u8` hidden in a proxy query apply. This keeps a DASH manifest under an
+   `/hls/` path DASH and a direct file in a `playlist` folder VIDEO. Stream JSON is cached in memory per addon/id for 5 minutes
    (`StremioApi`), so replaying an episode does not refetch slow addons. Headers come from
    `behaviorHints.proxyHeaders.request`, falling back to a top-level `behaviorHints.headers` for
    addons that emit headers there; `proxyHeaders.request` always wins. When the addon supplies no
@@ -59,9 +67,23 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    so P2P works without a debrid account.
 5. Subtitles: addons declaring `subtitles` resource → `/subtitles/{type}/{id}.json`,
    enriched with `videoHash`/`videoSize` from the first stream when available. Fetched **concurrently**
-   with the stream addons: emission starts as soon as the fastest addon has answered
-   (`firstAddonDone` `CompletableDeferred`, completed in each addon's `finally`) using the probe
-   hints available at that point, instead of waiting for every (possibly 90 s) stream addon.
+   with the stream addons: emission starts once the fastest **stream-capable** addon has answered
+   (`firstAddonDone` `CompletableDeferred`, completed only by an addon that declared the `stream`
+   resource and reached its stream query) using the probe hints available at that point, instead of
+   waiting for every (possibly 90 s) stream addon. Catalog/meta-only addons (e.g. Cinemeta, first in
+   the list by default) must not release the gate, or subtitles would be queried with null hints
+   before any stream has been seen; if no addon supports streams, a fallback `joinAll` releases the
+   gate once every addon has settled so the subtitle coroutine cannot hang. A second gate,
+   `manifestDone` (one `CompletableDeferred` per addon, completed in that addon's `finally`), is
+   awaited before the fan-out: it reads the shared `manifests` map, so an addon whose manifest has
+   not arrived yet would be silently dropped along with its external subtitles. Manifests are a
+   single 20 s round-trip (vs. the 90 s stream path), so waiting for all of them preserves the
+   latency goal while making the queried addon set complete.
+   The fan-out itself also emits per addon: each subtitle addon's results are forwarded as that
+   addon answers, so a slow one no longer holds back a fast one's subtitles (which a batched
+   `awaitAll()` did, up to the 90 s stream timeout). The shared `seen` set is concurrent and the
+   subtitle callback is already invoked from several stream coroutines, so only the ordering of
+   addon subtitles is nondeterministic.
    Per-stream embedded subtitles (`stream.subtitles`, a valid Stremio protocol field) are emitted as
    each addon's streams arrive, independent of whether any addon declares the `subtitles` resource;
    a shared URL-dedup set merges embedded and addon results. Language uses `lang`, falling back to
@@ -74,11 +96,12 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
   addons (a shared `AtomicInteger`). It is only an emission ceiling — every addon is fetched in full
   regardless, so it adds no network cost. No per-addon cap: per-addon counts are the servers' call.
 - **Failure back-off** (`StremioApi`): a URL that fails (timeout/exception) is not retried for 30 s,
-  so a down addon is not hammered once per screen. Successful responses clear the back-off.
+  so a down addon is not hammered once per screen. Successful responses clear the back-off, and the
+  backing map is bounded: each failure evicts expired entries and, past 256, the soonest-expiring.
 - **Cancellation is preserved**: every `StremioApi` catch rethrows `CancellationException` instead of
   swallowing it as an empty result.
-- **Bounded caches**: the manifest cache is pruned + capped (32); the stream cache evicts expired and
-  then oldest entries instead of being cleared wholesale.
+- **Bounded caches**: the manifest cache is pruned + capped (32), the stream cache evicts expired and
+  then oldest entries instead of being cleared wholesale, and the failure-back-off map is bounded (256).
 - **Dead-link guard**: `StremioMapping.isPlayableStreamUrl` drops non-`http(s)`/whitespace-containing
   URLs (e.g. CNCVerse's literal-space URLs) before they reach the player.
 

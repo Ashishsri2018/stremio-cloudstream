@@ -234,6 +234,39 @@ class StremioStreamTest {
     }
 
     @Test
+    fun prioritizesExplicitExtensionsOverPathHints() {
+        // A DASH manifest under an /hls/ path must stay DASH.
+        assertEquals(
+            StremioMapping.StreamKind.DASH,
+            StremioMapping.guessStreamKind("https://cdn.example/hls/live/manifest.mpd")
+        )
+        // Direct files under /hls/ or /playlist/ paths must stay VIDEO, not HLS.
+        assertEquals(
+            StremioMapping.StreamKind.VIDEO,
+            StremioMapping.guessStreamKind("https://cdn.example/hls/movie.mp4")
+        )
+        assertEquals(
+            StremioMapping.StreamKind.VIDEO,
+            StremioMapping.guessStreamKind("https://cdn.example/playlist/movie.mp4")
+        )
+        // A title containing "playlist" (no leading slash) is not a path hint.
+        assertEquals(
+            StremioMapping.StreamKind.VIDEO,
+            StremioMapping.guessStreamKind("https://cdn.example/shows/the-playlist-s01e01.mp4")
+        )
+        // ".m3u8" in the query of a direct file must not win over the file extension.
+        assertEquals(
+            StremioMapping.StreamKind.VIDEO,
+            StremioMapping.guessStreamKind("https://cdn.example/vod/movie.mp4?token=xyz.m3u8")
+        )
+        // An extension-less HLS path hint still resolves to HLS.
+        assertEquals(
+            StremioMapping.StreamKind.HLS,
+            StremioMapping.guessStreamKind("https://cdn.example/hls/live/")
+        )
+    }
+
+    @Test
     fun parsesQualityFromAddonText() {
         assertEquals(1080, StremioMapping.parseQuality("Movie.2024.1080p.WEB-DL"))
         assertEquals(1080, StremioMapping.parseQuality("FullHD"))

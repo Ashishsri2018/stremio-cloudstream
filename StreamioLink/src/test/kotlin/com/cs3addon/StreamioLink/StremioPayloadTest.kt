@@ -35,4 +35,20 @@ class StremioPayloadTest {
         assertNull(StremioMapping.decodePayload(""))
         assertNull(StremioMapping.decodePayload("{}"))
     }
+
+    @Test
+    fun ignoresUnknownPayloadFields() {
+        val decoded = StremioMapping.decodePayload(
+            """{"id":"tt1234567","type":"movie","extra":"future-field"}"""
+        )
+        assertEquals("tt1234567", decoded?.id)
+        assertEquals("movie", decoded?.type)
+    }
+
+    @Test
+    fun rejectsBlankIdOrType() {
+        assertNull(StremioMapping.decodePayload("""{"id":"","type":"movie"}"""))
+        assertNull(StremioMapping.decodePayload("""{"id":"   ","type":"movie"}"""))
+        assertNull(StremioMapping.decodePayload("""{"id":"tt1234567","type":""}"""))
+    }
 }

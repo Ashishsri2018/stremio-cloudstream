@@ -158,6 +158,7 @@ data class StremioSubtitle(
  * Opaque payload that travels through Cloudstream and comes back to load()/loadLinks().
  * Never add behaviour to this class, it is only a transport object.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class StremioPayload(
     @JsonProperty("id") val id: String,

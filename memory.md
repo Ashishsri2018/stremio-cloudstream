@@ -228,6 +228,156 @@
 - TODO A2 marked done. Not live-verified (no known public addon in `tools/test-addons.json` uses the
   top-level form), so this stays unit-test-only for now.
 
+## 2026-10-17 — subtitle gate released by a non-stream addon (reported concern → real bug)
+- Bug (present since the v9 "concurrent subtitles" change, see the 2026-10-16 v9 entry): the
+  `firstAddonDone` `CompletableDeferred` was completed in the `finally` of **every** addon launch,
+  so the first addon to *settle* — not the first *stream-capable* addon — released it. Addons that
+  return early (`getManifest` null, or `!supportsStream`) still tripped it, so the subtitle
+  coroutine read `subtitleProbeHash`/`subtitleProbeSize` while both were still null.
+- Why it hit the default config, not an edge case: `StremioSettings.streamAddonUrls()` puts the
+  **catalog addon first** and `useCatalogAsSource()` defaults `true`. The catalog addon (Cinemeta)
+  only declares catalog/meta, early-returns at the `!supportsStream` guard, and does less work
+  (`getManifest` with no `getStreams`) — so it is a strong first-settler. Subtitle addons needing
+  `videoHash`/`videoSize` silently degraded to title/imdb lookup every session.
+- Fix in `StremioProvider.loadLinks`: the gate is now completed **only by an addon that declared
+  `stream` and reached its stream query** (`streamAnswered = true` set after `candidatesFor`, so the
+  probe hints are populated first), and `finally` completes it only in that case. Added a fallback
+  child coroutine that `joinAll`s the addon jobs and releases the gate after everything settles, so
+  the subtitle `await()` cannot hang when no addon supports streams (would otherwise deadlock
+  `supervisorScope`).
+- Gotcha worth remembering: the addon jobs are collected with `addonBases.map { launch { ... } }`,
+  **not** `forEach { jobs += launch { ... } }`. The `forEach` form lets the fallback coroutine start
+  on another thread and call `joinAll()` on a list still being appended — a race that would release
+  the gate early all over again. `.map` fully builds the list before the fallback is launched.
+- Residual race (reduced only here, fixed in the next entry): subtitle-capable addons whose manifest
+  has not loaded yet when the gate fires were still dropped from `emitSubtitleLinks`. The stream
+  addon path now does manifest+streams+`candidatesFor` first, buying time, but there was no explicit
+  wait on all addon manifests.
+- `architecture.md` (§5) updated. No version bump yet — not published.
+
+## 2026-10-17 — `StremioPayload` hardening (unknown fields + blank id/type)
+- Gap (reported concern, verified real but low severity): `StremioPayload` was the only model without
+  `@JsonIgnoreProperties(ignoreUnknown = true)`, and `StremioMapping.mapper` is a bare
+  `jacksonObjectMapper()` (StremioMapping.kt:13) with `FAIL_ON_UNKNOWN_PROPERTIES` left at its
+  default `true`. An unknown field would throw `UnrecognizedPropertyException`, which `decodePayload`
+  swallows into `null`, silently breaking `load`/`loadLinks`. It cannot happen in normal operation
+  (the payload is produced by `encodePayload` and consumed by `decodePayload` in the same build), but
+  it matters for crafted/external `data` and for payloads persisted in CloudStream history/resume and
+  later decoded by a build with different fields. Added the annotation for parity with the peers.
+- Gap: no blank-field validation. `null` id/type already failed (non-null Kotlin params, no
+  defaults), and `null` ids are filtered at `StremioProvider.toSearchResponse`/`toEpisode`, but the
+  empty-string case slipped through and produced URLs like `/stream/movie/.json`. `decodePayload` now
+  returns `null` unless both `id` and `type` are non-blank (single validation point).
+- `StremioPayloadTest` gained `ignoresUnknownPayloadFields` and `rejectsBlankIdOrType`; existing
+  `payloadRoundTrip*`/`rejectsNonJsonPayload` unchanged. No architecture/behavior-flow change, so
+  `architecture.md` untouched. No version bump yet — not published.
+
+## 2026-10-17 — subtitle fan-out could drop a slow addon's external subtitles
+- Reported as "CRITICAL concurrency race"; verified real but a subtitle-completeness bug, not
+  critical. `emitSubtitleLinks` picks addons by snapshotting the shared `manifests` map
+  (`StremioProvider.emitSubtitleLinks`), which is filled per-addon as each `getManifest` returns.
+  The `firstAddonDone` gate could release after the fastest stream addon's manifest+streams, before
+  other addons' manifests arrived — so those addons were absent from the snapshot and their external
+  `subtitles` resource was never queried. Embedded subs and the gate-tripping addon's own external
+  subs were never affected; only *other*, slower subtitle-capable addons were dropped.
+- Fix: added a second gate, `manifestDone = addonBases.associateWith { CompletableDeferred() }`.
+  Each addon completes its own signal in the `finally` (so early `return@launch` on a null manifest
+  or `!supportsStream`, and failures, all release it). The subtitle coroutine now does
+  `firstAddonDone.await()` **then** `manifestDone.values.forEach { it.await() }` before calling
+  `emitSubtitleLinks`. Awaiting all manifests makes the queried set complete. Manifests are one
+  round-trip (20 s cap) vs. the 90 s stream path, so this keeps the original "don't wait for slow
+  stream addons" goal; the cost is bounded by the slowest manifest, not the slowest stream query.
+- Still no deadlock: `manifestDone` signals complete independent of the consumer; the fallback
+  `addonJobs.joinAll()` still releases `firstAddonDone` if no addon supports streams.
+- Lesson: when a fan-out consumes a shared map that peers fill concurrently, gate the consumer on
+  *that map's* readiness, not on an unrelated "someone finished" signal. The `firstAddonDone` fix
+  in the earlier entry narrowed the window but could not close it; this does.
+- `architecture.md` (§5) updated. No version bump yet — not published.
+
+## 2026-10-17 — comprehensive codebase audit (bugG.md)
+- Performed thorough audit across all plugin code without making any code edits.
+- Identified 20 findings (4 High, 9 Medium, 7 Low) covering manifest resource filtering dropping
+  addons that omit `types`, DASH/MP4 misclassification in `guessStreamKind`, `stremio://` URL
+  corruption in `normalizeAddonUrl`, TrueHD/CAM regex lookbehind flaw in `parseQuality`, subtitle probe
+  hint race conditions, episode numbering fallbacks, unbounded `failedUntil` memory leak, and more.
+- Detailed report written to `bugG.md`.
+
+## 2026-10-17 — `guessStreamKind` misclassified DASH/direct files under HLS-ish paths
+- Reported as "DASH streams and standard MP4 URLs misclassified as HLS". Verified **partly real**
+  (one of the two stated causes + its example were wrong): the check is `path.contains("/playlist")`
+  with a leading slash, so the audit's own example `.../shows/the-playlist-s01e01.mp4` was already
+  `VIDEO` (it contains `-playlist`, not `/playlist`). The real defects were:
+  - `hls` was evaluated before `dash`, and `hls` included the weak path hints `/hls` and `/playlist`,
+    so an explicit `.mpd` under an `/hls/` path (`.../hls/live/manifest.mpd`) became HLS.
+  - A direct file under an `/hls/` or `/playlist/` **directory** (`/hls/movie.mp4`) became HLS,
+    because the path hint beat the file extension.
+  - `lower.contains(".m3u8")` scans the whole URL, so `.m3u8` in a query turned a `.mp4` into HLS.
+- Fix (`StremioMapping.guessStreamKind`): explicit extensions are now authoritative. Order is
+  `isMpd && !isM3u8` → DASH, `isM3u8` (path/filename) → HLS, a known video-container extension in
+  path/filename (`.mp4/.mkv/.webm/.avi/.mov/.m4v/.flv`, new `videoFileRegex`) → VIDEO, and only then
+  the hints: full-URL `.m3u8`, `/hls`, `/playlist`, `mpegurl` → HLS; full-URL `.mpd` → DASH; else
+  VIDEO. The full-URL `.m3u8` fallback is kept on purpose (extensionless proxies such as
+  CNCVerse where `.m3u8` lives only in the query), and the PenguPlay `file.mkv|^|…` filename still
+  resolves to VIDEO.
+- Tests: added `prioritizesExplicitExtensionsOverPathHints`; existing `guessesStreamKind*` and
+  `guessesHlsBehindProxyOrPlainPaths` unchanged and still pass.
+- `architecture.md` (§4) updated. No version bump yet — not published.
+
+## 2026-10-17 — subtitle probe hints: `&&` blocked filling the second hint
+- Reported and verified real (low severity). `StremioProvider.candidatesFor` gated the probe-hint
+  capture on `subtitleHash.get() == null && subtitleSize.get() == null`. Once either hint was set,
+  the whole block was skipped for every later stream, so e.g. `[hash-only, hash+size]` left
+  `subtitleSize` null forever. OpenSubtitles' hash lookup needs both, so this forced a title/imdb
+  fallback and degraded subtitle accuracy. Only surfaces when an addon emits the two hints on
+  different streams (ours emit them together in one `behaviorHints`).
+- Fix: `&&` → `||`. The inner `compareAndSet(null, …)` per field was already correct, so this just
+  lets the missing field be filled while still stopping the scan once both are captured.
+- No regression test: `candidatesFor` is `StremioProvider` (Android/CloudStream) code with no JVM
+  test harness. No version bump yet — not published.
+
+## 2026-10-17 — `StremioApi.failedUntil` unbounded growth
+- Reported and verified real (low severity). `failedUntil` (unlike the 32-capped manifest cache and
+  64-capped stream cache) had no cap and no TTL sweep: an entry was only removed when the *same* URL
+  was re-queried after expiry (`isBackingOff`) or succeeded (`clearFailure`). High-cardinality keys
+  (per-id meta, search queries, `videoHash`-bearing subtitle URLs) that failed once and were never
+  revisited accumulated forever. Inert (an expired unqueried key can't affect results) and tiny per
+  entry, so no OOM risk — cache hygiene, not a functional bug.
+- Fix: `markFailure` now evicts expired entries, then the soonest-expiring if past
+  `FAIL_CACHE_MAX = 256`, before inserting. Mirrors `pruneStreams`/`pruneManifestsLocked`.
+- No unit test (StremioApi is Android/CloudStream `app` code). `architecture.md` (Performance &
+  resilience) updated. No version bump yet — not published.
+
+## 2026-10-17 — subtitle fan-out emitted per-addon, not batched on `awaitAll()`
+- Reported and verified real (low severity). `emitSubtitleLinks` fanned out with `async{}` then
+  `.awaitAll()` before the first `emitSubtitles`, so a fast subtitle addon's results were held until
+  the slowest returned (up to `STREAM_TIMEOUT_MS` = 90 s). Stream links were already progressive, so
+  this was an asymmetry. Narrow in practice: needs ≥2 addons declaring the `subtitles` resource with
+  different latency (a single subtitle addon waits on itself anyway), and it only delays subtitle
+  availability, not playback/links.
+- Fix: replaced the `awaitAll` batch with `subtitleAddons.forEach { launch { … emitSubtitles(…) } }`
+  inside `coroutineScope`, mirroring the stream fan-out. Safe because `seen` is
+  `ConcurrentHashMap.newKeySet()` and `subtitleCallback` is already invoked from several stream
+  coroutines (embedded subs); only addon-subtitle ordering becomes nondeterministic.
+- No unit test (StremioProvider/Android code). `architecture.md` (§5) updated. No version bump yet —
+  not published.
+
+## 2026-10-17 — `hasQuickSearch` removed (was advertising an unimplemented capability)
+- Reported as "quickSearch per keystroke → request storm → 429". Verified against the installed
+  stable CloudStream **v4.8.0** source: the premise is wrong. `hasQuickSearch` is a capability flag
+  (`MainAPI.kt:562`) consulted only by `QuickSearchFragment` in single-provider mode
+  (`isSingleProviderQuickSearch`, `QuickSearchFragment.kt:143-145`); only there does
+  `onQueryTextChange` call `search(..., isQuickSearch=true)` (`:260-264`). The main search bar does
+  not (`SearchFragment.kt:442` is commented out; typing there only does a debounced
+  `fetchSuggestions`). And `MainAPI.quickSearch` defaults to `throw NotImplementedError()`
+  (`:654-656`), **not** `search(query)`, so each keystroke failed before any HTTP — no storm, no 429.
+- Real, narrower defect: `hasQuickSearch = true` without overriding `quickSearch` made the
+  home-icon quick-search screen show nothing live (every keystroke Loading→Failure via
+  `safeApiCall` catching the throw). Removed the override (defaults to `false`); that screen now
+  searches on submit through the normal `search()` path. Chose this over implementing `quickSearch`
+  because live-as-you-type isn't needed and a `delay` debounce would be swallowed as a logged
+  `CancellationException` by CloudStream's `safeApiCall`.
+- `architecture.md` (§Data Flow step 2) updated. No version bump yet — not published.
+
 
 
 

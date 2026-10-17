@@ -24,6 +24,7 @@ object StremioMapping {
     const val DEFAULT_STREAM_USER_AGENT = "okhttp/4.12.0"
 
     private val manifestSuffixRegex = Regex("""/manifest\.json/?$""", RegexOption.IGNORE_CASE)
+    private val videoFileRegex = Regex("""\.(mp4|mkv|webm|avi|mov|m4v|flv)(?![0-9a-z])""")
     private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
     private val whitespaceRegex = Regex("""\s+""")
     private val whitespaceInUrlRegex = Regex("""\s""")
@@ -85,6 +86,8 @@ object StremioMapping {
 
     fun decodePayload(data: String): StremioPayload? = try {
         mapper.readValue(data, StremioPayload::class.java)
+            // Reject blank ids/types: they would build URLs like `/stream/movie/.json`.
+            .takeIf { it.id.isNotBlank() && it.type.isNotBlank() }
     } catch (t: Throwable) {
         null
     }
@@ -201,16 +204,22 @@ object StremioMapping {
         val path = lower.substringBefore('?').substringBefore('#')
         val name = filename?.lowercase().orEmpty()
         // Addons such as PenguPlay append metadata after the extension
-        // (e.g. "movie.mkv|^|720p..."), so check for the marker anywhere
-        // instead of only at the end of the string. The full URL is scanned last so
-        // extension-less playlists behind a plain proxy are still recognised
-        // (e.g. `.../proxy/bound?d=...%2F...m3u8`), and common `/hls/` paths are hints.
-        val hls = path.contains(".m3u8") || name.contains(".m3u8") || lower.contains(".m3u8") ||
-            path.contains("/hls") || path.contains("/playlist") || lower.contains("mpegurl")
-        val dash = path.contains(".mpd") || name.contains(".mpd") || lower.contains(".mpd")
+        // (e.g. "movie.mkv|^|720p..."), so check for the marker anywhere in path/name
+        // instead of only at the end of the string.
+        val isMpd = path.contains(".mpd") || name.contains(".mpd")
+        val isM3u8 = path.contains(".m3u8") || name.contains(".m3u8")
+        // Explicit extensions are authoritative and beat the semantic path hints below: a DASH
+        // manifest can sit under an `/hls/` path, and a direct file can live in a "playlist"
+        // folder. A known video-container extension means a direct file, not a playlist.
+        if (isMpd && !isM3u8) return StreamKind.DASH
+        if (isM3u8) return StreamKind.HLS
+        if (videoFileRegex.containsMatchIn(path + " " + name)) return StreamKind.VIDEO
+        // Fall back to hints, scanning the full URL last so an extension hidden in a proxy
+        // query is still recognised (e.g. `.../proxy/bound?d=...%2F...m3u8`).
         return when {
-            hls -> StreamKind.HLS
-            dash -> StreamKind.DASH
+            lower.contains(".m3u8") || path.contains("/hls") || path.contains("/playlist") ||
+                lower.contains("mpegurl") -> StreamKind.HLS
+            lower.contains(".mpd") -> StreamKind.DASH
             else -> StreamKind.VIDEO
         }
     }

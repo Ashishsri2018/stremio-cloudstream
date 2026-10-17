@@ -12,3 +12,5 @@ __pycache__/
 .cxx
 local.properties
 .vscode
+/bugF.md
+/bugG.md

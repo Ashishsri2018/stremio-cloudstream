@@ -13,21 +13,6 @@ Reference: `phisher98/cloudstream-extensions-phisher` — `StreamPlayStremioAddo
 `DEBRID`) and registers one provider per catalog addon; our manifest-driven single-catalog design
 covers the same ground with caching/back-off/timeouts, so port only these specific capabilities.
 
-### A. Parse and emit per-stream embedded subtitles + `behaviorHints.headers` + subtitle `lang_code`
-- [x] `StremioStream` has no `subtitles` field, so addon-embedded subtitles (a valid Stremio
-  protocol field on the stream object) are ignored. Add `subtitles: List<StremioSubtitle>` and emit
-  them (deduped by URL) alongside the subtitle-addon results in `emitSubtitleLinks`.
-  (Done 2026-10-17: emitted per-addon as streams arrive via a shared URL-dedup set;
-  `emitSubtitleLinks` no longer skips when no subtitle addon is configured.)
-- [x] `StremioBehaviorHints` models only `proxyHeaders`; some addons put request headers under a
-  top-level `behaviorHints.headers`. Add the field and use it as a fallback in
-  `StremioMapping.requestHeadersFor` without overriding `proxyHeaders.request`.
-  (Done 2026-10-17: added `StremioBehaviorHints.headers`; `requestHeadersFor` uses
-  `proxyHeaders.request ?: headers`, default UA still injected when no UA present.)
-- [x] `StremioSubtitle` only has `lang`; fall back to `lang_code` when `lang` is missing.
-  (Done 2026-10-17: `StremioMapping.subtitleLanguage` — `lang` → `lang_code` → `"Unknown"`.)
-- Scope: `StremioModels` + `StremioMapping` + `StremioProvider` + unit tests. No new network paths.
-
 ### B. Resolve `externalUrl` via `loadExtractor`  — DROPPED (not needed)
 - [ ] `StremioStream.externalUrl` (`StremioModels.kt`) is parsed but deliberately skipped, so
   addons that return a file-host page instead of a direct link produce no playable link. Hand the
@@ -62,6 +47,18 @@ This repo independently confirms A (headers fallback `proxyHeaders.request ?: he
 `stream.subtitles`, `SubtitleHelper` language normalization) and B (`externalUrl`/`ytId` via
 `loadExtractor`), and adds these:
 
+### A. Embedded `stream.subtitles` + `behaviorHints.headers` fallback + subtitle `lang`→`lang_code`  — DONE (2026-10-17)
+- [x] `StremioStream.subtitles` parsed and emitted per-addon (shared URL-dedup set), independent of
+  whether any addon declares the `subtitles` resource.
+- [x] `StremioBehaviorHints.headers` added; `StremioMapping.requestHeadersFor` uses
+  `proxyHeaders.request ?: headers`, default UA injected only when none present.
+- [x] `StremioSubtitle.langCode` added; `StremioMapping.subtitleLanguage` falls back
+  `lang` → `lang_code` → `"Unknown"`.
+- Not ported (considered + skipped 2026-10-17): doGior's
+  `SubtitleHelper.fromTagToEnglishLanguageName` display normalization. Ours passes the string through
+  (it's an Android/CloudStream class, so it can't live in the pure `StremioMapping` layer).
+- Details in `memory.md` (v12 headers entry + embedded-subtitles entry).
+
 ### D. Enrich infoHash magnets with a public tracker list
 - [ ] `Stream.runCallback` builds `magnet:` from `infoHash` **plus** the stream's `tracker:` sources
   **plus** trackers fetched from a public list (`ngosang/trackerslist …/trackers_best.txt`; their
@@ -94,11 +91,3 @@ This repo independently confirms A (headers fallback `proxyHeaders.request ?: he
 - With no catalog addon, build home rows/search/metadata from TMDB and resolve the imdb id for the
   stream addons. Lets the plugin work with stream addons only (no catalogs). Requires embedding a
   TMDB key (`secrets.properties` → `BuildConfig`), which we deliberately avoid today (Cinemeta is free).
-
-## Raise total link cap to 500 (Done)
-- [x] `StremioProvider.MAX_LINKS` raised 120 → **500** (a single total ceiling shared across addons;
-  the CloudStream app itself imposes no cap — `RepoLinkGenerator` only URL-dedups and stores links in a
-  `PersistentSet`).
-- [x] No per-addon cap — per-addon counts are the addon servers' decision.
-- [x] Forwarding ceiling only: addons are already fully fetched regardless, so no extra network.
-- (Decided 2026-10-16; deliberately left out of the v9 efficiency pass. Done 2026-10-17.)

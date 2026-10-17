@@ -28,6 +28,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
@@ -48,7 +49,6 @@ class StremioProvider : MainAPI() {
     override var name = "StreamioLink"
     override var lang = "en"
     override val hasMainPage = true
-    override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Others)
     override val loadLinksTimeoutMs = 180_000L
 
@@ -346,13 +346,27 @@ class StremioProvider : MainAPI() {
         // supervisorScope keeps one addon's failure from cancelling the others.
         //
         // Subtitles are fetched concurrently rather than strictly after every stream addon:
-        // once the fastest addon has answered, the subtitle addons are queried with whatever
-        // probe hints are available at that point. Previously a single slow (90 s) stream
-        // addon delayed all subtitles for the whole session.
+        // once the fastest addon that actually supports streams has answered, the subtitle
+        // addons are queried. Previously a single slow (90 s) stream addon delayed all
+        // subtitles for the whole session.
+        //
+        // Two gates guard the subtitle fan-out. `firstAddonDone` is released only by a
+        // stream-capable addon, so the probe hints exist before querying. `manifestDone` has one
+        // signal per addon, released when that addon's manifest fetch has settled; the fan-out
+        // reads the shared `manifests` map, so an addon whose manifest has not arrived yet would
+        // be silently dropped and its external subtitles lost. A manifest is a single 20 s
+        // round-trip (vs. the 90 s stream path), so waiting for all of them keeps the latency
+        // goal while making the queried addon set complete.
+        //
+        // A catalog/meta-only addon (e.g. Cinemeta, first in the list by default) must not
+        // release `firstAddonDone`; it would otherwise fire before any probe hint is known.
+        // If no addon supports streams, the fallback releases it once every addon has settled.
         val firstAddonDone = CompletableDeferred<Unit>()
         supervisorScope {
-            addonBases.forEach { base ->
+            val manifestDone = addonBases.associateWith { CompletableDeferred<Unit>() }
+            val addonJobs = addonBases.map { base ->
                 launch {
+                    var streamAnswered = false
                     try {
                         val manifest = StremioApi.getManifest(base) ?: return@launch
                         manifests[base] = manifest
@@ -391,16 +405,26 @@ class StremioProvider : MainAPI() {
                             )
                             found.set(true)
                         }
+                        streamAnswered = true
                     } catch (t: Throwable) {
                         if (t is CancellationException) throw t
                         Log.e(TAG, "Addon $base failed: ${t.message}")
                     } finally {
-                        firstAddonDone.complete(Unit)
+                        manifestDone.getValue(base).complete(Unit)
+                        if (streamAnswered) firstAddonDone.complete(Unit)
                     }
                 }
             }
             launch {
+                addonJobs.joinAll()
+                firstAddonDone.complete(Unit)
+            }
+            launch {
                 firstAddonDone.await()
+                // Wait for every manifest so no subtitle-capable addon is left out of the
+                // `manifests` snapshot below. Each signal is completed in the addon's `finally`,
+                // so an early return or failure still releases it.
+                manifestDone.values.forEach { it.await() }
                 emitSubtitleLinks(
                     payload,
                     manifests,
@@ -447,7 +471,7 @@ class StremioProvider : MainAPI() {
                     torrent = StremioMapping.isTorrentUrl(playbackUrl),
                 )
             )
-            if (subtitleHash.get() == null && subtitleSize.get() == null) {
+            if (subtitleHash.get() == null || subtitleSize.get() == null) {
                 stream.behaviorHints?.videoHash?.takeIf { it.isNotBlank() }?.let {
                     subtitleHash.compareAndSet(null, it)
                 }
@@ -474,13 +498,18 @@ class StremioProvider : MainAPI() {
                 StremioMapping.idMatchesPrefixes(payload.id, StremioMapping.resourceIdPrefixesFor(manifest, "subtitles"))
         }
 
-        val subtitleLists = coroutineScope {
-            subtitleAddons.map { (base, _) ->
-                async { StremioApi.getSubtitles(base, type, payload.id, videoHash, videoSize) }
-            }.awaitAll()
+        // Emit each addon's subtitles as soon as that addon answers, mirroring the stream
+        // fan-out above. Batching with `awaitAll()` held fast addons' subtitles until the
+        // slowest one returned (up to STREAM_TIMEOUT_MS). `seen` is a concurrent set and the
+        // callback is already invoked from several stream coroutines, so this is safe.
+        coroutineScope {
+            subtitleAddons.forEach { (base, _) ->
+                launch {
+                    val subtitles = StremioApi.getSubtitles(base, type, payload.id, videoHash, videoSize)
+                    emitSubtitles(subtitles, seen, subtitleCallback)
+                }
+            }
         }
-
-        subtitleLists.forEach { emitSubtitles(it, seen, subtitleCallback) }
     }
 
     /** Emits [subtitles], deduping by URL against the shared [seen] set. */
