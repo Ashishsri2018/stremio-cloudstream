@@ -5,7 +5,8 @@ A [CloudStream 3](https://github.com/recloudstream/cloudstream) plugin that turn
 
 - **1 catalog addon** powers the home page, search and metadata (series episodes included).
 - **N source addons** are queried in parallel for every play and their streams are merged.
-- **Subtitles** are pulled from any configured addon that declares the `subtitles` resource.
+- **Subtitles** are pulled from any configured addon that declares the `subtitles` resource, plus
+  any subtitles embedded per-stream by the stream addons.
 - Addons are managed in **Settings → Plugins → StreamioLink (gear icon)**.
 
 ## Install

@@ -339,6 +339,7 @@ class StremioProvider : MainAPI() {
         val emitted = AtomicInteger(0)
         val subtitleProbeHash = AtomicReference<String?>(null)
         val subtitleProbeSize = AtomicReference<Long?>(null)
+        val seenSubtitleUrls = ConcurrentHashMap.newKeySet<String>()
 
         // Fan out per addon. Each addon emits its links as soon as it responds so a slow
         // addon never blocks the fast ones and is still waited for (up to STREAM_TIMEOUT_MS).
@@ -366,6 +367,14 @@ class StremioProvider : MainAPI() {
 
                         val addonName = manifest.name?.takeIf { it.isNotBlank() } ?: hostOf(base)
                         val streams = StremioApi.getStreams(base, type, payload.id)
+                        // Embedded subtitles travel on the stream itself; emit them as soon as
+                        // this addon answers rather than after all addons settle, matching the
+                        // streaming semantics of the links above.
+                        emitSubtitles(
+                            StremioMapping.embeddedSubtitles(streams),
+                            seenSubtitleUrls,
+                            subtitleCallback,
+                        )
                         for (candidate in candidatesFor(addonName, streams, subtitleProbeHash, subtitleProbeSize)) {
                             if (emitted.incrementAndGet() > MAX_LINKS) break
                             callback.invoke(
@@ -397,6 +406,7 @@ class StremioProvider : MainAPI() {
                     manifests,
                     subtitleProbeHash.get(),
                     subtitleProbeSize.get(),
+                    seenSubtitleUrls,
                     subtitleCallback,
                 )
             }
@@ -454,6 +464,7 @@ class StremioProvider : MainAPI() {
         manifests: Map<String, StremioManifest>,
         videoHash: String?,
         videoSize: Long?,
+        seen: MutableSet<String>,
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
         val type = payload.type.lowercase()
@@ -462,7 +473,6 @@ class StremioProvider : MainAPI() {
                 type in StremioMapping.resourceTypesFor(manifest, "subtitles").map { it.lowercase() } &&
                 StremioMapping.idMatchesPrefixes(payload.id, StremioMapping.resourceIdPrefixesFor(manifest, "subtitles"))
         }
-        if (subtitleAddons.isEmpty()) return
 
         val subtitleLists = coroutineScope {
             subtitleAddons.map { (base, _) ->
@@ -470,14 +480,19 @@ class StremioProvider : MainAPI() {
             }.awaitAll()
         }
 
-        val seen = mutableSetOf<String>()
-        for (subtitles in subtitleLists) {
-            for (subtitle in subtitles) {
-                val url = subtitle.url?.takeIf { it.isNotBlank() } ?: continue
-                if (!seen.add(url)) continue
-                val language = subtitle.lang?.takeIf { it.isNotBlank() } ?: "Unknown"
-                subtitleCallback.invoke(newSubtitleFile(language, url))
-            }
+        subtitleLists.forEach { emitSubtitles(it, seen, subtitleCallback) }
+    }
+
+    /** Emits [subtitles], deduping by URL against the shared [seen] set. */
+    private fun emitSubtitles(
+        subtitles: List<StremioSubtitle>,
+        seen: MutableSet<String>,
+        subtitleCallback: (SubtitleFile) -> Unit,
+    ) {
+        for (subtitle in subtitles) {
+            val url = subtitle.url?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            if (!seen.add(url)) continue
+            subtitleCallback.invoke(newSubtitleFile(StremioMapping.subtitleLanguage(subtitle), url))
         }
     }
 

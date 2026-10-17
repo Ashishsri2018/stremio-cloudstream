@@ -60,6 +60,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    with the stream addons: emission starts as soon as the fastest addon has answered
    (`firstAddonDone` `CompletableDeferred`, completed in each addon's `finally`) using the probe
    hints available at that point, instead of waiting for every (possibly 90 s) stream addon.
+   Per-stream embedded subtitles (`stream.subtitles`, a valid Stremio protocol field) are emitted as
+   each addon's streams arrive, independent of whether any addon declares the `subtitles` resource;
+   a shared URL-dedup set merges embedded and addon results. Language uses `lang`, falling back to
+   `lang_code` then `"Unknown"` (`StremioMapping.subtitleLanguage`).
 
 ## Performance & resilience
 - **Bounded fan-out** for catalog/home/search requests (`Semaphore`), so a wide manifest cannot

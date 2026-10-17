@@ -118,6 +118,8 @@ data class StremioStream(
     @JsonProperty("description") val description: String? = null,
     @JsonProperty("behaviorHints") val behaviorHints: StremioBehaviorHints? = null,
     @JsonProperty("sources") val sources: List<String>? = null,
+    /** Subtitles embedded directly on the stream object (a valid Stremio protocol field). */
+    @JsonProperty("subtitles") val subtitles: List<StremioSubtitle>? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -146,6 +148,8 @@ data class StremioSubtitle(
     @JsonProperty("id") val id: String? = null,
     @JsonProperty("url") val url: String? = null,
     @JsonProperty("lang") val lang: String? = null,
+    /** Some addons omit `lang` and only provide the ISO code here. */
+    @JsonProperty("lang_code") val langCode: String? = null,
 )
 
 /**

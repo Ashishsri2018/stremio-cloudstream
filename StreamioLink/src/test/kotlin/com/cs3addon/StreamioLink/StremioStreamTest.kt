@@ -298,4 +298,60 @@ class StremioStreamTest {
         assertEquals("https://subs.example/1.srt", subtitles[0].url)
         assertEquals("en", subtitles[0].lang)
     }
+
+    @Test
+    fun parsesEmbeddedSubtitlesOnStreams() {
+        val streams = StremioMapping.parseStreams(
+            """
+            {
+              "streams": [
+                {
+                  "url": "https://cdn.example/a.mkv",
+                  "subtitles": [
+                    { "url": "https://subs.example/en.srt", "lang": "English" },
+                    { "url": "https://subs.example/fr.srt", "lang_code": "fr" }
+                  ]
+                },
+                { "url": "https://cdn.example/b.mkv" }
+              ]
+            }
+            """.trimIndent()
+        )
+        assertEquals(2, streams[0].subtitles?.size)
+        assertEquals("https://subs.example/fr.srt", streams[0].subtitles?.get(1)?.url)
+        assertEquals("fr", streams[0].subtitles?.get(1)?.langCode)
+        assertTrue(streams[1].subtitles.isNullOrEmpty())
+    }
+
+    @Test
+    fun resolvesSubtitleLanguageWithLangCodeFallback() {
+        assertEquals("English", StremioMapping.subtitleLanguage(StremioSubtitle(lang = "English")))
+        assertEquals("fr", StremioMapping.subtitleLanguage(StremioSubtitle(langCode = "fr")))
+        assertEquals("en", StremioMapping.subtitleLanguage(StremioSubtitle(lang = "en", langCode = "fr")))
+        assertEquals("fr", StremioMapping.subtitleLanguage(StremioSubtitle(lang = "  ", langCode = "fr")))
+        assertEquals("Unknown", StremioMapping.subtitleLanguage(StremioSubtitle()))
+    }
+
+    @Test
+    fun flattensAndDedupesEmbeddedSubtitles() {
+        val streams = listOf(
+            StremioStream(
+                subtitles = listOf(
+                    StremioSubtitle(url = "https://subs.example/en.srt", lang = "English"),
+                    StremioSubtitle(url = "https://subs.example/en.srt", lang = "English duplicate"),
+                    StremioSubtitle(lang = "no url"),
+                )
+            ),
+            StremioStream(
+                subtitles = listOf(
+                    StremioSubtitle(url = "https://subs.example/en.srt", lang = "duplicate across streams"),
+                    StremioSubtitle(url = "https://subs.example/fr.srt", langCode = "fr"),
+                )
+            ),
+        )
+        val embedded = StremioMapping.embeddedSubtitles(streams)
+        assertEquals(2, embedded.size)
+        assertEquals("https://subs.example/en.srt", embedded[0].url)
+        assertEquals("https://subs.example/fr.srt", embedded[1].url)
+    }
 }

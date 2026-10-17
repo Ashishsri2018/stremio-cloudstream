@@ -56,6 +56,28 @@ object StremioMapping {
     fun parseSubtitles(json: String): List<StremioSubtitle> =
         mapper.readValue(json, StremioSubtitlesResponse::class.java).subtitles.orEmpty()
 
+    /** Language label for a subtitle: `lang`, then `lang_code`, else "Unknown". */
+    fun subtitleLanguage(subtitle: StremioSubtitle): String =
+        subtitle.lang?.trim()?.takeIf { it.isNotEmpty() }
+            ?: subtitle.langCode?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "Unknown"
+
+    /**
+     * Subtitles embedded on a stream (`stream.subtitles`), flattened across [streams] and
+     * deduped by URL. Entries without a URL are skipped.
+     */
+    fun embeddedSubtitles(streams: List<StremioStream>): List<StremioSubtitle> {
+        val seen = mutableSetOf<String>()
+        val result = ArrayList<StremioSubtitle>()
+        streams.forEach { stream ->
+            stream.subtitles.orEmpty().forEach { subtitle ->
+                val url = subtitle.url?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+                if (seen.add(url)) result.add(subtitle)
+            }
+        }
+        return result
+    }
+
     // ---------------------------------------------------------------- payload
 
     fun encodePayload(id: String, type: String): String =

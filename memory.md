@@ -197,6 +197,24 @@
   addons are already fetched in full; this only raises the forwarding ceiling. Follows the
   2026-10-16 decision, deliberately left out of the v9 efficiency pass.
 
+## 2026-10-17 — embedded stream subtitles + `lang_code`
+- `StremioStream.subtitles` (a valid Stremio protocol field) was parsed away. Added it to
+  `StremioModels` and emit the entries via `StremioMapping.embeddedSubtitles` (flattened, deduped by
+  URL, no URL → skipped) as each addon's streams arrive in `StremioProvider.loadLinks`. Emitting
+  per-addon avoids the `firstAddonDone` snapshot race, so a slow addon's embedded subs are not lost.
+- `emitSubtitleLinks` no longer early-returns when no addon declares the `subtitles` resource —
+  embedded subs must be emitted even with stream-only addons. Both paths share one
+  `ConcurrentHashMap.newKeySet` URL-dedup set, so an embedded sub and an addon sub with the same URL
+  collapse to one.
+- `StremioSubtitle.lang_code` added; `StremioMapping.subtitleLanguage` prefers `lang`, falls back to
+  `lang_code`, then `"Unknown"`. Unit tests cover parsing, precedence, and flatten/dedup.
+- TODO A2 (`behaviorHints.headers` top-level fallback) deliberately deferred.
+- Bumped `version` 10 → **11** so CloudStream replaces an installed v10 copy.
+- Live-verified (tt0111161): pengu `31` streams carry `36` embedded sub entries (`12` unique URLs,
+  a subset of its `35`-URL `subtitles` resource → merged `35`); cnc `40` streams / `174` entries
+  (`51` unique). hdhub/meteor have none; playvio returned `0` streams for this id. No live addon
+  used `lang_code` (all use `lang`), so A3 stays unit-test-only.
+
 
 
 
