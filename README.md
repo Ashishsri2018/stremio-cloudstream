@@ -56,6 +56,28 @@ Paste either a base URL (`https://addon.example`) or a full manifest URL
 | MediaFusion (Debrid) | Streams | your configured manifest URL |
 | OpenSubtitles v3 | Subtitles | `https://opensubtitles-v3.strem.io` |
 
+## Tested addons
+
+These addons were live-playtested against this plugin (movie `tt0111161` / series
+`tt0903747:1:1`). Their exact configs are recorded in
+[`tools/test-addons.json`](tools/test-addons.json).
+
+**Catalog addon** (home rows, search, metadata)
+
+| Addon | Homepage |
+|---|---|
+| Nuvio | `https://catalog.nuvio.tv/manifest.json` |
+
+**Source addons** (streams)
+
+| Addon | Homepage | Notes |
+|---|---|---|
+| hdhub | https://hdhub.thevolecitor.qzz.io/?config | Direct signed CDN links (R2 + pixeldrain). Fast and reliable. |
+| pengu | https://pengu.uk/configure | Aggregator; links are `pengu.uk/direct/...` 307 redirects to the same CDN objects hdhub returns (~8s redirect). |
+| cnc | https://cncverse.dpdns.org/ | CNCVerse Bridge. Many links; ~1/3 dead (404 / refused / HTML). Source-only (all catalogs are type other/tv). |
+| playvio | https://plaviohd.vercel.app/configure | Another HTTP-sources addon. |
+| meteor | http://meteorfortheweebs.midnightignite.me/configure | P2P torrent addon. This config blob is broken: regenerate it with `languageFormat` as a string (`"flags"`). |
+
 ## Build
 
 Everything is built by GitHub Actions (`.github/workflows/build.yml`):

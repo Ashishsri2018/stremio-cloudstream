@@ -24,11 +24,14 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -49,11 +52,24 @@ class StremioProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Others)
     override val loadLinksTimeoutMs = 180_000L
 
+    /** A stuck catalog must not hold the whole home load for the default 120 s. */
+    override val getMainPageTimeoutMs = 90_000L
+    override val searchTimeoutMs = 60_000L
+
     private companion object {
         const val TAG = "StreamioLink"
         const val DEFAULT_PAGE_SIZE = 20
         const val MAX_LINKS = 120
+
+        /**
+         * Catalogs are fetched with bounded concurrency. A catalog addon can advertise dozens
+         * of rows (Nuvio: 27 loadable catalogs), and firing all of them at once opened as many
+         * sockets; a small window keeps the device and the addon calm without adding much latency.
+         */
+        const val MAX_CONCURRENT_CATALOGS = 6
     }
+
+    private val catalogSemaphore = Semaphore(MAX_CONCURRENT_CATALOGS)
 
     private data class LinkCandidate(
         val addonName: String,
@@ -118,7 +134,7 @@ class StremioProvider : MainAPI() {
 
         val rows = coroutineScope {
             catalogs.map { catalog ->
-                async { fetchCatalogRow(catalogBase, manifest, catalog, page) }
+                async { catalogSemaphore.withPermit { fetchCatalogRow(catalogBase, manifest, catalog, page) } }
             }.awaitAll().filterNotNull()
         }
         val hasNext = catalogs.any { StremioMapping.catalogSupportsSkip(it) }
@@ -144,6 +160,8 @@ class StremioProvider : MainAPI() {
         val offset = if (page <= 1) 0 else (catalogOffsets[key] ?: ((page - 1) * DEFAULT_PAGE_SIZE))
         val items = try {
             StremioApi.getCatalog(catalogBase, ref.type, ref.id, if (offset > 0) "skip=$offset" else null)
+        } catch (t: CancellationException) {
+            throw t
         } catch (t: Throwable) {
             Log.e(TAG, "Catalog ${ref.id} page $page failed: ${t.message}")
             emptyList()
@@ -171,6 +189,8 @@ class StremioProvider : MainAPI() {
         val offset = if (page > 1) (catalogOffsets[key] ?: ((page - 1) * DEFAULT_PAGE_SIZE)) else 0
         val items = try {
             StremioApi.getCatalog(catalogBase, type, id, if (offset > 0) "skip=$offset" else null)
+        } catch (t: CancellationException) {
+            throw t
         } catch (t: Throwable) {
             Log.e(TAG, "Home catalog $id failed: ${t.message}")
             return null
@@ -233,8 +253,12 @@ class StremioProvider : MainAPI() {
                     val type = catalog.type ?: return@async emptyList()
                     val id = catalog.id ?: return@async emptyList()
                     try {
-                        StremioApi.getCatalog(base, type, id, "search=$encodedQuery")
-                            .mapNotNull { toSearchResponse(it, type) }
+                        catalogSemaphore.withPermit {
+                            StremioApi.getCatalog(base, type, id, "search=$encodedQuery")
+                                .mapNotNull { toSearchResponse(it, type) }
+                        }
+                    } catch (t: CancellationException) {
+                        throw t
                     } catch (t: Throwable) {
                         Log.e(TAG, "Search catalog $id failed: ${t.message}")
                         emptyList()
@@ -319,6 +343,12 @@ class StremioProvider : MainAPI() {
         // Fan out per addon. Each addon emits its links as soon as it responds so a slow
         // addon never blocks the fast ones and is still waited for (up to STREAM_TIMEOUT_MS).
         // supervisorScope keeps one addon's failure from cancelling the others.
+        //
+        // Subtitles are fetched concurrently rather than strictly after every stream addon:
+        // once the fastest addon has answered, the subtitle addons are queried with whatever
+        // probe hints are available at that point. Previously a single slow (90 s) stream
+        // addon delayed all subtitles for the whole session.
+        val firstAddonDone = CompletableDeferred<Unit>()
         supervisorScope {
             addonBases.forEach { base ->
                 launch {
@@ -355,18 +385,22 @@ class StremioProvider : MainAPI() {
                     } catch (t: Throwable) {
                         if (t is CancellationException) throw t
                         Log.e(TAG, "Addon $base failed: ${t.message}")
+                    } finally {
+                        firstAddonDone.complete(Unit)
                     }
                 }
             }
+            launch {
+                firstAddonDone.await()
+                emitSubtitleLinks(
+                    payload,
+                    manifests,
+                    subtitleProbeHash.get(),
+                    subtitleProbeSize.get(),
+                    subtitleCallback,
+                )
+            }
         }
-
-        emitSubtitleLinks(
-            payload,
-            manifests,
-            subtitleProbeHash.get(),
-            subtitleProbeSize.get(),
-            subtitleCallback,
-        )
 
         return found.get()
     }

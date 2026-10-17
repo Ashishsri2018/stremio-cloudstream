@@ -161,6 +161,34 @@
   cross-addon dedup, no liveness filtering, no P2P opt-out. Addon-side limits remain: pengu's ~8 s
   redirect is paid at playback, cnc dead links still appear, meteor's broken config is user-side.
 
+## 2026-10-16 — efficiency/error-handling pass (concurrency, back-off, cancellation) — version 9
+- Question: "does it lazy-load catalog items?" Answer: **no, and it can't**. CloudStream's
+  `HomeViewModel.load()` calls `getMainPage(1, null)` **once** and renders every returned row; row
+  expansion only paginates an existing row (`expandAndReturn` → `getMainPage(nextPage, rowIndex)`).
+  Verified against upstream `HomeViewModel.kt` / `APIRepository.kt`. So all catalogs must be fetched
+  for the initial home response; lazy rows are impossible through the provider API. Instead the
+  eager fan-out was made efficient.
+- **Bounded catalog fan-out**: `StremioProvider` uses `Semaphore(MAX_CONCURRENT_CATALOGS = 6)` in
+  `allCatalogsPage` and `searchAddon`. Nuvio advertises 27 loadable catalogs, so the old code opened
+  up to 27 sockets at once. Added `getMainPageTimeoutMs = 90 s` / `searchTimeoutMs = 60 s`.
+- **Concurrent subtitles**: previously `emitSubtitleLinks` ran strictly after `supervisorScope`
+  (i.e. after the slowest stream addon, up to 90 s). Now a child coroutine waits on
+  `firstAddonDone: CompletableDeferred<Unit>` (completed in each stream addon's `finally`) and emits
+  subtitles as soon as the fastest addon answers, with whatever `videoHash`/`videoSize` hints exist
+  then. Trade-off: hints (and possibly a very slow addon's subtitle manifest) may be missing on the
+  first pass; acceptable vs. subtitles being delayed for the whole session.
+- **Cancellation bug fixed**: every `StremioApi` `catch (t: Throwable)` now rethrows
+  `CancellationException`; previously a cancelled/timed-out coroutine was swallowed as "empty".
+  Also added the missing rethrow in `StremioProvider` catalog catch blocks.
+- **Failure back-off**: `StremioApi` remembers failed URLs for 30 s (`failedUntil`), so a down addon
+  is not re-hit per screen; cleared on success. Only real failures (null/timeout/exception) mark a
+  failure — a valid empty catalog/stream list does not.
+- **Cache hygiene**: manifest cache now prunes expired + caps at 32 entries (was unbounded, TTL only
+  checked on read); stream cache evicts expired then oldest-by-`fetchedAt` instead of `clear()`.
+- **Dead-link guard**: `StremioMapping.isPlayableStreamUrl` (http(s), no whitespace) is used by
+  `playbackUrlFor`, dropping CNCVerse's literal-space URLs before they reach the player. Unit-tested.
+- README gained a "Tested addons" section (name + homepage + notes from `tools/test-addons.json`).
+
 
 
 

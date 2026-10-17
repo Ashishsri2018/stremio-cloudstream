@@ -26,6 +26,7 @@ object StremioMapping {
     private val manifestSuffixRegex = Regex("""/manifest\.json/?$""", RegexOption.IGNORE_CASE)
     private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
     private val whitespaceRegex = Regex("""\s+""")
+    private val whitespaceInUrlRegex = Regex("""\s""")
 
     private val qualityPatterns = listOf(
         2160 to Regex("""(?<![0-9])(2160p|4k|uhd)(?![0-9a-z])"""),
@@ -192,9 +193,23 @@ object StremioMapping {
         }
     }
 
+    /**
+     * True when [url] is an `http(s)`/`magnet:` URL with no embedded whitespace. Some addons
+     * (e.g. CNCVerse) return raw URLs containing literal spaces, which the player cannot
+     * open; dropping them removes a guaranteed-dead link from the list. `magnet:` is kept so
+     * addons that carry a magnet in `url` (instead of `infoHash`) still play.
+     */
+    fun isPlayableStreamUrl(url: String): Boolean {
+        val trimmed = url.trim()
+        val recognisedScheme = trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true) ||
+            trimmed.startsWith("magnet:", ignoreCase = true)
+        return recognisedScheme && !whitespaceInUrlRegex.containsMatchIn(trimmed)
+    }
+
     /** Direct playable URL for a stream, or null when the stream only carries a torrent/site reference. */
     fun playbackUrlFor(stream: StremioStream): String? {
-        stream.url?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        stream.url?.trim()?.takeIf { isPlayableStreamUrl(it) }?.let { return it }
         stream.ytId?.trim()?.takeIf { it.isNotEmpty() }?.let { return "https://www.youtube.com/watch?v=$it" }
         return null
     }

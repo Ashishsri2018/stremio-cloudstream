@@ -31,6 +31,11 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    (`catalogSupportsSkip`) paginate: CloudStream expands a row by requesting a single catalog
    (`request.data` holds the ref) and the next page is fetched with `skip=<offset>`, where the
    offset advances by the number of items the addon actually returned (`catalogOffsets`).
+   Rows are fetched with **bounded concurrency** (`MAX_CONCURRENT_CATALOGS = 6`, a `Semaphore`):
+   a catalog addon can advertise dozens of rows (Nuvio: 27 loadable catalogs) and firing them all
+   at once opened as many sockets. `getMainPageTimeoutMs = 90 s` / `searchTimeoutMs = 60 s` cap a
+   stuck catalog. (Lazy row loading is **not** possible: CloudStream's `HomeViewModel.load()` calls
+   `getMainPage(1, null)` once and renders every returned row; expansion only paginates existing rows.)
 2. Courses: search-capable catalogs → `/catalog/{type}/{id}/search=...json` (falls back to meta addon).
 3. Load: `/meta/{type}/{id}.json` (catalog addon, then fallback) → movie page or episode list.
 4. Links: all source addons declared `stream` resource and matching type/idPrefixes are queried
@@ -51,8 +56,22 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    `ExtractorLinkType.MAGNET`; CloudStream's bundled torrent engine plays them from a local server,
    so P2P works without a debrid account.
 5. Subtitles: addons declaring `subtitles` resource → `/subtitles/{type}/{id}.json`,
-   enriched with `videoHash`/`videoSize` from the first stream when available. Emitted after all
-   stream addons resolve so the probe hints are populated.
+   enriched with `videoHash`/`videoSize` from the first stream when available. Fetched **concurrently**
+   with the stream addons: emission starts as soon as the fastest addon has answered
+   (`firstAddonDone` `CompletableDeferred`, completed in each addon's `finally`) using the probe
+   hints available at that point, instead of waiting for every (possibly 90 s) stream addon.
+
+## Performance & resilience
+- **Bounded fan-out** for catalog/home/search requests (`Semaphore`), so a wide manifest cannot
+  exhaust sockets.
+- **Failure back-off** (`StremioApi`): a URL that fails (timeout/exception) is not retried for 30 s,
+  so a down addon is not hammered once per screen. Successful responses clear the back-off.
+- **Cancellation is preserved**: every `StremioApi` catch rethrows `CancellationException` instead of
+  swallowing it as an empty result.
+- **Bounded caches**: the manifest cache is pruned + capped (32); the stream cache evicts expired and
+  then oldest entries instead of being cleared wholesale.
+- **Dead-link guard**: `StremioMapping.isPlayableStreamUrl` drops non-`http(s)`/whitespace-containing
+  URLs (e.g. CNCVerse's literal-space URLs) before they reach the player.
 
 ## CI/CD
 - `build.yml`: test → `make` + `makePluginsJson` → publish `output_builds` to `builds` branch.

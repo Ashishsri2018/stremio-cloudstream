@@ -60,6 +60,27 @@ class StremioStreamTest {
     }
 
     @Test
+    fun rejectsUnplayableStreamUrls() {
+        assertTrue(StremioMapping.isPlayableStreamUrl("https://cdn.example/a.m3u8"))
+        assertTrue(StremioMapping.isPlayableStreamUrl("http://140.238.244.130/proxy/bound?d=x"))
+        assertTrue(StremioMapping.isPlayableStreamUrl("magnet:?xt=urn:btih:DEADBEEF"))
+        assertTrue(!StremioMapping.isPlayableStreamUrl("https://cdn.example/hub/my file.mkv"))
+        assertTrue(!StremioMapping.isPlayableStreamUrl("ftp://files.example/a.mkv"))
+        assertTrue(!StremioMapping.isPlayableStreamUrl(""))
+        // A raw URL containing a literal space (CNCVerse) must not reach the player.
+        assertNull(StremioMapping.playbackUrlFor(StremioStream(url = "https://cdn.example/my file.mkv")))
+        assertEquals(
+            "https://cdn.example/ok.mkv",
+            StremioMapping.playbackUrlFor(StremioStream(url = "https://cdn.example/ok.mkv"))
+        )
+        // A magnet carried in `url` (no infoHash) must still be offered.
+        assertEquals(
+            "magnet:?xt=urn:btih:DEADBEEF",
+            StremioMapping.playbackUrlFor(StremioStream(url = "magnet:?xt=urn:btih:DEADBEEF"))
+        )
+    }
+
+    @Test
     fun buildsMagnetFromInfoHashStream() {
         val stream = StremioStream(
             infoHash = "45fa4233ef87c58f5f8b4817e4d50c9f5363caef",

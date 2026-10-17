@@ -9,21 +9,31 @@
     {
       "name": "hdhub",
       "url": "https://hdhub.thevolecitor.qzz.io/eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjcyMHAsNDgwcCIsInNvcnQiOiJhc2MiLCJjYXRhbG9ncyI6IiJ9/manifest.json",
+      "home": "https://hdhub.thevolecitor.qzz.io/?config",
       "notes": "Direct signed CDN links (R2 + pixeldrain). Fast and reliable."
     },
     {
       "name": "pengu",
       "url": "https://pengu.uk/%7B%22auth_token%22%3A%22Mhkey_5NPtZD01O6einoPmxDRaMjnFGKCvfPNBoWReQ%22%7D/manifest.json",
+      "home": "https://pengu.uk/configure",
       "notes": "Aggregator; links are pengu.uk/direct/... 307 redirects to the same CDN objects hdhub returns (~8s redirect)."
     },
     {
       "name": "cnc",
       "url": "https://cncverse.dpdns.org/u/p_l0uq0xtenbo7/manifest.json",
+      "home": "https://cncverse.dpdns.org/",
       "notes": "CNCVerse Bridge. Many links; ~1/3 dead (404 / connection refused / HTML). Source-only (all catalogs are type other/tv)."
     },
     {
+      "name": "playvio",
+      "url": "https://plaviohd.vercel.app/c/eyJzb3VyY2VzIjpbIkhESHViIiwiTW92aWVCb3giLCI5eGZsaXgiLCJWaWR5IiwiQ2luZXpvIiwiVmlkemVlIiwiVmVnYW1vdmllcyIsIlZpeFNyYyIsIkxpdmVUViJdLCJxIjpbIjcyMHAiLCI0ODBwIl0sImxhbmciOlsiRW5nbGlzaCIsIkhpbmRpIiwiQXJhYmljIiwiU3BhbmlzaCIsIkZyZW5jaCJdLCJjYXQiOlsiSG9sbHl3b29kIiwiQm9sbHl3b29kIiwiQW5pbWUiLCJLb3JlYW4iLCJDaGluZXNlIiwiVHVya2lzaCJdLCJ0dnJlZ2lvbiI6WyJVUyIsIlVLIiwiQ0EiLCJBVSIsIk5aIl0sInNvcnQiOiJhc2MiLCJzcmNPcmRlciI6WyJIREh1YiIsIk1vdmllQm94IiwiOXhmbGl4IiwiVmlkeSIsIkNpbmV6byIsIlZpZHplZSIsIlZlZ2Ftb3ZpZXMiLCJWaXhTcmMiLCJMaXZlVFYiXSwiaGVhbHRoY2hlY2siOnRydWV9/manifest.json",
+      "home": "https://plaviohd.vercel.app/configure",
+      "notes": "another http sources addon"
+    },
+    {
       "name": "meteor",
-      "url": "https://meteorfortheweebs.midnightignite.me/eyJjYWNoZWRPbmx5IjpmYWxzZSwic2tpcFJlbGVhc2VGaWx0ZXIiOnRydWUsInJlbW92ZVRyYXNoIjpmYWxzZSwicmVtb3ZlU2FtcGxlcyI6ZmFsc2UsImFsbG93QWR1bHQiOnRydWUsImV4Y2x1ZGUzRCI6ZmFsc2UsImVuYWJsZVNlYURleCI6ZmFsc2UsInNob3dZb3VyTWVkaWEiOmZhbHNlLCJ5b3VyTWVkaWFMZWdhY3lNb2RlIjpmYWxzZSwibWluU2VlZGVycyI6MCwibWF4UmVzdWx0cyI6MCwibWF4UGVyUmVzb2x1dGlvbiI6MCwicmVzb2x1dGlvbnMiOltdLCJwcmVmZXJyZWRMYW5ncyI6WyJlbiIsIm11bHRpIiwiaGkiXSwibGFuZ3VhZ2VzIjpbXSwiZXhjbHVkZWRMYW5ncyI6W10sInJlc3VsdEZvcm1hdCI6WyJ0aXRsZSIsInF1YWxpdHkiLCJzaXplIiwiYXVkaW8iXSwibGFuZ3VhZ2VGb3JtYXQiOlsiZmxhZ3MiXSwic29ydE9yZGVyIjpbImNhY2hlZCIsInNlZWRleCIsIi1yZXNvbHV0aW9uIiwiLXF1YWxpdHkiLCJsYW5ndWFnZSIsInNlZWRlcnMiLCItc2l6ZSIsInBhY2siXSwiYWxsb3dQMlAiOnRydWUsImV4Y2x1ZGVkU291cmNlcyI6W119/manifest.json",
+      "url": "https://meteorfortheweebs.midnightignite.me/eyJjYWNoZWRPbmx5IjpmYWxzZSwic2tpcFJlbGVhc2VGaWx0ZXIiOnRydWUsInJlbW92ZVRyYXNoIjpmYWxzZSwicmVtb3ZlU2FtcGxlcyI6ZmFsc2UsImFsbG93QWR1bHQiOmZhbHNlLCJleGNsdWRlM0QiOmZhbHNlLCJlbmFibGVTZWFEZXgiOmZhbHNlLCJzaG93WW91ck1lZGlhIjpmYWxzZSwieW91ck1lZGlhTGVnYWN5TW9kZSI6ZmFsc2UsIm1pblNlZWRlcnMiOjAsIm1heFJlc3VsdHMiOjI1LCJtYXhQZXJSZXNvbHV0aW9uIjo1LCJyZXNvbHV0aW9ucyI6WyI3MjBwIiwiNDgwcCJdLCJwcmVmZXJyZWRMYW5ncyI6WyJlbiIsIm11bHRpIl0sImxhbmd1YWdlcyI6W10sImV4Y2x1ZGVkTGFuZ3MiOltdLCJyZXN1bHRGb3JtYXQiOlsidGl0bGUiLCJxdWFsaXR5Iiwic2l6ZSIsImF1ZGlvIl0sImxhbmd1YWdlRm9ybWF0IjoiZmxhZ3MiLCJzb3J0T3JkZXIiOlsiY2FjaGVkIiwic2VhZGV4IiwicmVzb2x1dGlvbiIsInF1YWxpdHkiLCJsYW5ndWFnZSIsIi1zaXplIiwicGFjayIsInNlZWRlcnMiXSwiYWxsb3dQMlAiOnRydWUsImV4Y2x1ZGVkU291cmNlcyI6W119/manifest.json",
+      "home": "http://meteorfortheweebs.midnightignite.me/configure",
       "notes": "P2P torrent addon. This config blob is broken: languageFormat is an array, so /stream/* returns 401 'invalid session'. Regenerate with languageFormat as a string (\"flags\")."
     }
   ]
