@@ -484,7 +484,7 @@ class StremioProvider : MainAPI() {
     }
 
     /** Emits [subtitles], deduping by URL against the shared [seen] set. */
-    private fun emitSubtitles(
+    private suspend fun emitSubtitles(
         subtitles: List<StremioSubtitle>,
         seen: MutableSet<String>,
         subtitleCallback: (SubtitleFile) -> Unit,
