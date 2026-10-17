@@ -59,7 +59,7 @@ class StremioProvider : MainAPI() {
     private companion object {
         const val TAG = "StreamioLink"
         const val DEFAULT_PAGE_SIZE = 20
-        const val MAX_LINKS = 120
+        const val MAX_LINKS = 500
 
         /**
          * Catalogs are fetched with bounded concurrency. A catalog addon can advertise dozens

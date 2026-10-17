@@ -189,6 +189,14 @@
   `playbackUrlFor`, dropping CNCVerse's literal-space URLs before they reach the player. Unit-tested.
 - README gained a "Tested addons" section (name + homepage + notes from `tools/test-addons.json`).
 
+## 2026-10-17 — raise total link cap to 500 — version 10
+- `StremioProvider.MAX_LINKS` raised 120 → **500** (single ceiling shared across all source addons,
+  via the existing `AtomicInteger`). Users with many source addons (up to ~10) now receive the links
+  each addon's server returns instead of sharing a 120 budget.
+- No per-addon cap added (per-addon counts are the addon servers' decision) and no extra network:
+  addons are already fetched in full; this only raises the forwarding ceiling. Follows the
+  2026-10-16 decision, deliberately left out of the v9 efficiency pass.
+
 
 
 

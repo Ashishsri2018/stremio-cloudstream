@@ -64,6 +64,9 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 ## Performance & resilience
 - **Bounded fan-out** for catalog/home/search requests (`Semaphore`), so a wide manifest cannot
   exhaust sockets.
+- **Total link ceiling**: `StremioProvider.MAX_LINKS = 500` caps links forwarded across all source
+  addons (a shared `AtomicInteger`). It is only an emission ceiling — every addon is fetched in full
+  regardless, so it adds no network cost. No per-addon cap: per-addon counts are the servers' call.
 - **Failure back-off** (`StremioApi`): a URL that fails (timeout/exception) is not retried for 30 s,
   so a down addon is not hammered once per screen. Successful responses clear the back-off.
 - **Cancellation is preserved**: every `StremioApi` catch rethrows `CancellationException` instead of
