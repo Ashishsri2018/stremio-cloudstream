@@ -49,8 +49,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    per-link network probe (a HEAD probe was mostly wasted: the tested hosts answer HEAD with
    403/404 and it delayed emission). Stream JSON is cached in memory per addon/id for 5 minutes
    (`StremioApi`), so replaying an episode does not refetch slow addons. Headers come from
-   `behaviorHints.proxyHeaders`, and when the addon supplies no `User-Agent` the non-Mozilla
-   `StremioMapping.DEFAULT_STREAM_USER_AGENT` is injected (some CDNs reject browser UAs with 428).
+   `behaviorHints.proxyHeaders.request`, falling back to a top-level `behaviorHints.headers` for
+   addons that emit headers there; `proxyHeaders.request` always wins. When the addon supplies no
+   `User-Agent` the non-Mozilla `StremioMapping.DEFAULT_STREAM_USER_AGENT` is injected (some CDNs
+   reject browser UAs with 428).
    `infoHash`-only streams (plain torrent addons) become a magnet via `StremioMapping.torrentUrlFor`
    (infoHash + `tracker:` sources + `fileIdx` as `index`) and are emitted as
    `ExtractorLinkType.MAGNET`; CloudStream's bundled torrent engine plays them from a local server,

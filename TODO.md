@@ -19,9 +19,11 @@ covers the same ground with caching/back-off/timeouts, so port only these specif
   them (deduped by URL) alongside the subtitle-addon results in `emitSubtitleLinks`.
   (Done 2026-10-17: emitted per-addon as streams arrive via a shared URL-dedup set;
   `emitSubtitleLinks` no longer skips when no subtitle addon is configured.)
-- [ ] `StremioBehaviorHints` models only `proxyHeaders`; some addons put request headers under a
+- [x] `StremioBehaviorHints` models only `proxyHeaders`; some addons put request headers under a
   top-level `behaviorHints.headers`. Add the field and use it as a fallback in
   `StremioMapping.requestHeadersFor` without overriding `proxyHeaders.request`.
+  (Done 2026-10-17: added `StremioBehaviorHints.headers`; `requestHeadersFor` uses
+  `proxyHeaders.request ?: headers`, default UA still injected when no UA present.)
 - [x] `StremioSubtitle` only has `lang`; fall back to `lang_code` when `lang` is missing.
   (Done 2026-10-17: `StremioMapping.subtitleLanguage` — `lang` → `lang_code` → `"Unknown"`.)
 - Scope: `StremioModels` + `StremioMapping` + `StremioProvider` + unit tests. No new network paths.

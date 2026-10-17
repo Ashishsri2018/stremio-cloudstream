@@ -134,6 +134,51 @@ class StremioStreamTest {
     }
 
     @Test
+    fun fallsBackToTopLevelBehaviorHintsHeaders() {
+        val json = """
+            {
+              "streams": [
+                {
+                  "url": "https://cdn.example/a.m3u8",
+                  "behaviorHints": {
+                    "headers": { "User-Agent": "TopUA", "Referer": "https://top.example/" }
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+        val stream = StremioMapping.parseStreams(json).single()
+        val headers = StremioMapping.requestHeadersFor(stream)
+        assertEquals("TopUA", headers["User-Agent"])
+        assertEquals("https://top.example/", StremioMapping.extractReferer(headers))
+    }
+
+    @Test
+    fun topLevelHeadersStillGetDefaultUserAgentWhenMissing() {
+        val stream = StremioStream(
+            url = "https://cdn.example/a.m3u8",
+            behaviorHints = StremioBehaviorHints(headers = mapOf("Referer" to "https://top.example/")),
+        )
+        val headers = StremioMapping.requestHeadersFor(stream)
+        assertEquals(StremioMapping.DEFAULT_STREAM_USER_AGENT, headers["User-Agent"])
+        assertEquals("https://top.example/", headers["Referer"])
+    }
+
+    @Test
+    fun proxyHeadersRequestWinsOverTopLevelHeaders() {
+        val stream = StremioStream(
+            url = "https://cdn.example/a.m3u8",
+            behaviorHints = StremioBehaviorHints(
+                proxyHeaders = StremioProxyHeaders(request = mapOf("User-Agent" to "ProxyUA")),
+                headers = mapOf("User-Agent" to "TopUA"),
+            ),
+        )
+        val headers = StremioMapping.requestHeadersFor(stream)
+        assertEquals("ProxyUA", headers["User-Agent"])
+        assertTrue(headers.values.none { it == "TopUA" })
+    }
+
+    @Test
     fun guessesStreamKindFromExtensionOrFilename() {
         assertEquals(StremioMapping.StreamKind.HLS, StremioMapping.guessStreamKind("https://cdn.example/a.m3u8?token=1"))
         assertEquals(StremioMapping.StreamKind.DASH, StremioMapping.guessStreamKind("https://cdn.example/a.mpd"))

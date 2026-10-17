@@ -215,6 +215,19 @@
   (`51` unique). hdhub/meteor have none; playvio returned `0` streams for this id. No live addon
   used `lang_code` (all use `lang`), so A3 stays unit-test-only.
 
+## 2026-10-17 — `behaviorHints.headers` top-level fallback — version 12
+- Some addons emit request headers at the top level of `behaviorHints` instead of under
+  `proxyHeaders.request`. Added `StremioBehaviorHints.headers` and made
+  `StremioMapping.requestHeadersFor` read `proxyHeaders.request ?: headers`, so proxyHeaders always
+  wins and the top-level map is only used when proxyHeaders.request is absent/empty. The default
+  non-Mozilla UA is still injected when the chosen map has no `User-Agent`.
+- Unit tests cover: JSON parsing of a top-level `headers` stream, fallback with referer extraction,
+  default UA injection for a headers-only map, and proxyHeaders precedence over top-level headers.
+- No new network paths; change is confined to `StremioModels`/`StremioMapping`.
+- Bumped `version` 11 → **12** so CloudStream replaces an installed v11 copy.
+- TODO A2 marked done. Not live-verified (no known public addon in `tools/test-addons.json` uses the
+  top-level form), so this stays unit-test-only for now.
+
 
 
 

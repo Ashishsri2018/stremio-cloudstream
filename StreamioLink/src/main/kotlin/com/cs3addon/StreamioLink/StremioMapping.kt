@@ -267,7 +267,10 @@ object StremioMapping {
     fun isTorrentUrl(url: String): Boolean = url.startsWith("magnet:", ignoreCase = true)
 
     fun requestHeadersFor(stream: StremioStream): Map<String, String> {
-        val provided = stream.behaviorHints?.proxyHeaders?.request.orEmpty()
+        val hints = stream.behaviorHints
+        // Prefer proxyHeaders.request; some addons emit a top-level `headers` instead.
+        val provided = hints?.proxyHeaders?.request?.takeIf { it.isNotEmpty() }
+            ?: hints?.headers.orEmpty()
         if (provided.keys.any { it.equals("User-Agent", ignoreCase = true) }) return provided
         return provided + ("User-Agent" to DEFAULT_STREAM_USER_AGENT)
     }

@@ -130,6 +130,8 @@ data class StremioBehaviorHints(
     @JsonProperty("videoHash") val videoHash: String? = null,
     @JsonProperty("videoSize") val videoSize: Long? = null,
     @JsonProperty("proxyHeaders") val proxyHeaders: StremioProxyHeaders? = null,
+    /** Some addons put request headers here instead of under `proxyHeaders.request`. */
+    @JsonProperty("headers") val headers: Map<String, String>? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
