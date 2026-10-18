@@ -140,6 +140,29 @@ class StremioManifestTest {
     }
 
     @Test
+    fun buildsSubtitleUrlCandidatesWithPlainFallback() {
+        val base = "https://addon.example"
+        assertEquals(
+            listOf("$base/subtitles/series/tt123:1:2.json"),
+            StremioMapping.buildSubtitlesUrlCandidates(base, "series", "tt123:1:2", null, null)
+        )
+        assertEquals(
+            listOf(
+                "$base/subtitles/series/tt123:1:2/videoHash=abc&videoSize=1234.json",
+                "$base/subtitles/series/tt123:1:2.json"
+            ),
+            StremioMapping.buildSubtitlesUrlCandidates(base, "series", "tt123:1:2", "abc", 1234L)
+        )
+        assertEquals(
+            listOf(
+                "$base/subtitles/series/tt123:1:2/videoSize=1234.json",
+                "$base/subtitles/series/tt123:1:2.json"
+            ),
+            StremioMapping.buildSubtitlesUrlCandidates(base, "series", "tt123:1:2", null, 1234L)
+        )
+    }
+
+    @Test
     fun encodesQueryValuesWithSpacesAndAmpersands() {
         assertEquals("big%20buck%20%26%20more", StremioMapping.encodeQueryValue("big buck & more"))
     }

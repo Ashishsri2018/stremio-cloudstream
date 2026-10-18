@@ -71,7 +71,12 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    `ExtractorLinkType.MAGNET`; CloudStream's bundled torrent engine plays them from a local server,
    so P2P works without a debrid account.
 5. Subtitles: addons declaring `subtitles` resource → `/subtitles/{type}/{id}.json`,
-   enriched with `videoHash`/`videoSize` from the first stream when available. Fetched **concurrently**
+   enriched with `videoHash`/`videoSize` from the first stream when available. The canonical
+   hint-bearing URL is tried first; if the addon answers with a non-JSON body (some, e.g.
+   PlavioHD, implement only the extra-less route and return an HTML 404 for any path extra),
+   `StremioApi.getSubtitles` retries the plain URL (`StremioMapping.buildSubtitlesUrlCandidates`).
+   A transport failure/timeout does not trigger the retry, to avoid paying a second full timeout.
+   Fetched **concurrently**
    with the stream addons: emission starts once the fastest **stream-capable** addon has answered
    (`firstAddonDone` `CompletableDeferred`, completed only by an addon that declared the `stream`
    resource and reached its stream query) using the probe hints available at that point, instead of

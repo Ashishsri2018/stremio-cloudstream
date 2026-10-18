@@ -399,4 +399,25 @@
   updated.
 - No version bump yet — not published.
 
+## 2026-10-18 — PlavioHD subtitle 404: fall back to the extra-less URL — version 15
+- Report: logs showed PlavioHD returning an HTML 404 for `subtitles/series/<id>/videoSize=….json`.
+- Root cause is addon-side, not a `buildSubtitlesUrl` shape bug. Live-verified against the
+  configured PlavioHD (`tools/test-addons.json`): `/subtitles/{type}/{id}.json` → `200
+  application/json`, but **any** path extra (`videoHash`, `videoSize`, `filename`, `foo=bar`,
+  encoded or not) → `404 text/html`; `?videoSize=…` query → `200`. PlavioHD advertises the
+  `subtitles` resource yet only implements the extra-less route. Our shape matches Stremio's own
+  client exactly (`stremio-core` `http_transport.rs` + `query_params_encode.rs`: extras are one
+  path segment joined with raw `&`), and the SDK-built OpenSubtitles v3 accepts the same extra
+  form — so gating on the manifest's declared `extra` was rejected (OpenSubtitles declares only the
+  short `["subtitles"]` resource, yet needs `videoHash`).
+- Why it triggers: `videoHash`/`videoSize` are captured from *any* source addon's streams
+  (`candidatesFor`) and applied to *every* subtitles addon, so a hint supplied by e.g. hdhub leaks
+  onto PlavioHD even though PlavioHD's own streams carry none. NiceHttp does not throw on 404, so
+  the HTML body reached Jackson, threw, caused a logged failure + 30 s backoff, and dropped
+  PlavioHD's subtitles for the session.
+- Fix: `StremioMapping.buildSubtitlesUrlCandidates` returns `[with-extra, plain]` (or just
+  `[plain]` with no hints); `StremioApi.getSubtitles` walks it, falling back to the plain URL on a
+  non-JSON body. A null body (timeout/transport failure) does **not** retry, to avoid a second full
+  90 s wait. Unit-tested in `StremioManifestTest`; `architecture.md` §5 updated. Bumped 14 → 15.
+
 

@@ -215,6 +215,25 @@ object StremioMapping {
         return "$base/subtitles/$type/$id$extraSegment.json"
     }
 
+    /**
+     * URL shapes to try for the `subtitles` resource, in order. The hint-bearing form
+     * (`/subtitles/{type}/{id}/videoHash=…&videoSize=….json`) is the canonical Stremio
+     * request, but some addons only implement the extra-less route and answer anything
+     * with a path extra with an HTML 404 (e.g. PlavioHD). When hints exist both shapes are
+     * returned so [StremioApi.getSubtitles] can fall back; without hints only one.
+     */
+    fun buildSubtitlesUrlCandidates(
+        base: String,
+        type: String,
+        id: String,
+        videoHash: String?,
+        videoSize: Long?,
+    ): List<String> {
+        val withExtra = buildSubtitlesUrl(base, type, id, videoHash, videoSize)
+        val plain = buildSubtitlesUrl(base, type, id, null, null)
+        return if (withExtra == plain) listOf(plain) else listOf(withExtra, plain)
+    }
+
     // ---------------------------------------------------------------- stream helpers
 
     enum class StreamKind { HLS, DASH, VIDEO }

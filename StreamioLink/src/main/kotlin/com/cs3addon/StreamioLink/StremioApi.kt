@@ -181,24 +181,40 @@ object StremioApi {
         videoHash: String? = null,
         videoSize: Long? = null,
     ): List<StremioSubtitle> {
-        val url = StremioMapping.buildSubtitlesUrl(base, type, id, videoHash, videoSize)
-        if (isBackingOff(url)) return emptyList()
-        return try {
-            val json = request(url, STREAM_TIMEOUT_MS)
+        // Try the canonical hint-bearing URL first, then the extra-less one. Addons such as
+        // PlavioHD implement only `/subtitles/{type}/{id}.json` and answer any path extra
+        // with an HTML 404; NiceHttp does not throw on that status, so the body reaches the
+        // parser and fails, which is the signal to retry the plain shape.
+        for (url in StremioMapping.buildSubtitlesUrlCandidates(base, type, id, videoHash, videoSize)) {
+            if (isBackingOff(url)) continue
+            val json = try {
+                request(url, STREAM_TIMEOUT_MS)
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                Log.e(TAG, "Subtitles for $id failed on $base: ${t.message}")
+                null
+            }
+            // A null body is a transport failure/timeout: do not spend another full timeout
+            // on the alternate shape, just record it and stop.
             if (json == null) {
                 markFailure(url)
-                emptyList()
-            } else {
-                clearFailure(url)
-                StremioMapping.parseSubtitles(json)
+                break
             }
-        } catch (t: CancellationException) {
-            throw t
-        } catch (t: Throwable) {
-            Log.e(TAG, "Subtitles for $id failed on $base: ${t.message}")
+            val subtitles = try {
+                StremioMapping.parseSubtitles(json)
+            } catch (t: Throwable) {
+                null
+            }
+            if (subtitles != null) {
+                clearFailure(url)
+                return subtitles
+            }
+            // Non-JSON body (e.g. an HTML 404): back off this shape so later episodes skip
+            // straight to the next candidate, then try it.
             markFailure(url)
-            emptyList()
         }
+        return emptyList()
     }
 
     // ---------------------------------------------------------------- streams
