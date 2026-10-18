@@ -29,6 +29,26 @@ object StremioMapping {
     private val whitespaceRegex = Regex("""\s+""")
     private val whitespaceInUrlRegex = Regex("""\s""")
 
+    /** Cap on how many language tags are shown for one stream, keeping the label compact. */
+    private const val MAX_LANGUAGE_TAGS = 3
+
+    private val languageTokenRegex = Regex("""[A-Za-z]+""")
+    private val dualAudioRegex = Regex("""dual[\s\-_.]*audio""", RegexOption.IGNORE_CASE)
+
+    /**
+     * Languages surfaced on the link label. Deliberately tiny — only the languages this setup
+     * actually uses — so detection stays cheap. Stremio streams carry no language field, so this
+     * is text-mined from `name`/`title`/`description`/`filename`. "Dual audio" is reported as
+     * `Multi`.
+     */
+    private val languageAliases: Map<String, String> = mapOf(
+        "english" to "English",
+        "eng" to "English",
+        "hindi" to "Hindi",
+        "hin" to "Hindi",
+        "multi" to "Multi",
+    )
+
     private val qualityPatterns = listOf(
         2160 to Regex("""(?<![0-9])(2160p|4k|uhd)(?![0-9a-z])"""),
         1440 to Regex("""(?<![0-9])1440p?(?![0-9a-z])"""),
@@ -302,6 +322,36 @@ object StremioMapping {
         }
         return combined?.replace(whitespaceRegex, " ")?.take(180)
     }
+
+    /**
+     * Audio languages advertised by the addon for this stream, in order of appearance.
+     *
+     * The Stremio stream object has no language field, so the addons write it into free text:
+     * `description` (HdHub: `...Hindi.English...`; PenguPlay: `🎧 Audio: English, Hindi`),
+     * `title` (PlavioHD: `480p · Hindi, English`) or `behaviorHints.filename`
+     * (`...Rus.Eng.mkv`). Detected names are canonicalized, deduped (case-insensitively) and
+     * capped at [MAX_LANGUAGE_TAGS]. "Dual audio" is reported as `Multi`.
+     */
+    fun streamLanguages(stream: StremioStream): List<String> {
+        val haystack = listOfNotNull(
+            stream.name,
+            stream.title,
+            stream.description,
+            stream.behaviorHints?.filename,
+        ).joinToString(" ")
+        if (haystack.isBlank()) return emptyList()
+
+        val found = LinkedHashSet<String>()
+        if (dualAudioRegex.containsMatchIn(haystack)) found.add("Multi")
+        languageTokenRegex.findAll(haystack).forEach { match ->
+            languageAliases[match.value.lowercase()]?.let { found.add(it) }
+        }
+        return found.take(MAX_LANGUAGE_TAGS)
+    }
+
+    /** Compact `[Hindi, English]` tag for a stream, or null when no language was detected. */
+    fun languageTag(stream: StremioStream): String? =
+        streamLanguages(stream).takeIf { it.isNotEmpty() }?.joinToString(", ", "[", "]")
 
     /** Quality value (144..2160), 0 when unknown. */
     fun parseQuality(vararg texts: String?): Int {

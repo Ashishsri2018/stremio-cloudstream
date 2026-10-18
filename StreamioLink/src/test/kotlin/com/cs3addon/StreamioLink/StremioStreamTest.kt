@@ -305,6 +305,77 @@ class StremioStreamTest {
     }
 
     @Test
+    fun extractsLanguagesFromAddonText() {
+        // HdHub: language only in description (release filename + a bare language line).
+        assertEquals(
+            listOf("Hindi", "English"),
+            StremioMapping.streamLanguages(
+                StremioStream(
+                    name = "HdHub 480p",
+                    description = "[FSL] [560MB] The.Shawshank.Redemption.1994.480p.BluRay.Hindi.English.DD2.0.x264.ESubs.mkv\nHindi\nFSL | HdHub",
+                )
+            )
+        )
+        // PenguPlay: audio line in description and a dotted filename.
+        assertEquals(
+            listOf("English", "Hindi"),
+            StremioMapping.streamLanguages(
+                StremioStream(
+                    name = "🐧 PenguPlay 🐧 720p • HDHub4u · FSL",
+                    description = "🍿 The Shawshank Redemption\n🎧 Audio: English, Hindi",
+                    behaviorHints = StremioBehaviorHints(
+                        filename = "The.Shawshank.Redemption.1994.720p.BluRay.Hindi.English.DD5.1.x264.mkv"
+                    ),
+                )
+            )
+        )
+        // PlavioHD/CNCVerse style: language in title.
+        assertEquals(
+            listOf("Hindi", "English"),
+            StremioMapping.streamLanguages(
+                StremioStream(name = "480p · Vegamovies", title = "480p · Hindi, English\nVegamovies · PlavioHD")
+            )
+        )
+        // Meteor: no title, language tokens in the description/filename.
+        assertEquals(
+            listOf("English"),
+            StremioMapping.streamLanguages(
+                StremioStream(
+                    name = "[P2P☁️] Meteor",
+                    description = "📄 Shawshank.Redemption.1994.Rus.Eng.mkv\n🔊 eac3",
+                )
+            )
+        )
+        // "Dual audio" is reported as Multi.
+        assertEquals(
+            listOf("Multi", "Hindi"),
+            StremioMapping.streamLanguages(
+                StremioStream(title = "Movie 1080p Dual Audio (Hindi)")
+            )
+        )
+        // Only the supported languages are detected; rest are ignored.
+        assertEquals(
+            listOf("English", "Hindi"),
+            StremioMapping.streamLanguages(
+                StremioStream(
+                    title = "English Hindi Tamil Telugu",
+                    description = "ENGLISH again",
+                )
+            )
+        )
+    }
+
+    @Test
+    fun buildsLanguageTagOrNull() {
+        assertEquals(
+            "[Hindi, English]",
+            StremioMapping.languageTag(StremioStream(title = "1080p Hindi, English"))
+        )
+        assertNull(StremioMapping.languageTag(StremioStream(name = "HdHub 480p")))
+        assertNull(StremioMapping.languageTag(StremioStream()))
+    }
+
+    @Test
     fun parsesReleaseYear() {
         assertEquals(2010, StremioMapping.yearFromReleaseInfo("2010–2015"))
         assertEquals(2021, StremioMapping.yearFromReleaseInfo("2021"))

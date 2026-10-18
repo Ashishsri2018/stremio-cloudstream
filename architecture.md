@@ -61,6 +61,11 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    addons that emit headers there; `proxyHeaders.request` always wins. When the addon supplies no
    `User-Agent` the non-Mozilla `StremioMapping.DEFAULT_STREAM_USER_AGENT` is injected (some CDNs
    reject browser UAs with 428).
+   Each link's visible name is the addon's `name`/`title`/filename (`StremioMapping.streamDisplayName`).
+   CloudStream's `ExtractorLink` has no language field, so audio languages text-mined from the addon
+   payload (`name`/`title`/`description`/`behaviorHints.filename`, via `StremioMapping.streamLanguages`)
+   are prefixed as a compact `[Hindi, English]` tag (`StremioMapping.languageTag`) so they appear in the
+   Play dialog; streams with no detectable language are left unchanged.
    `infoHash`-only streams (plain torrent addons) become a magnet via `StremioMapping.torrentUrlFor`
    (infoHash + `tracker:` sources + `fileIdx` as `index`) and are emitted as
    `ExtractorLinkType.MAGNET`; CloudStream's bundled torrent engine plays them from a local server,

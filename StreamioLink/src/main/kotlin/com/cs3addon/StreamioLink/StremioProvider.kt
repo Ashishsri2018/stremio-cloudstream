@@ -457,8 +457,11 @@ class StremioProvider : MainAPI() {
                 stream.title, stream.name, stream.behaviorHints?.filename
             )
             val displayName = StremioMapping.streamDisplayName(stream).orEmpty().ifBlank { "Stream" }
-            val label = if (displayName.contains(addonName, ignoreCase = true)) displayName
+            val baseLabel = if (displayName.contains(addonName, ignoreCase = true)) displayName
             else "[$addonName] $displayName"
+            // Cloudstream's ExtractorLink has no language field, so the addon-derived language
+            // tag is prefixed onto the visible link name instead.
+            val label = StremioMapping.languageTag(stream)?.let { "$it $baseLabel" } ?: baseLabel
             candidates.add(
                 LinkCandidate(
                     addonName = addonName,

@@ -378,6 +378,25 @@
   `CancellationException` by CloudStream's `safeApiCall`.
 - `architecture.md` (§Data Flow step 2) updated. No version bump yet — not published.
 
-
+## 2026-10-18 — Per-link language tags (CloudStream has no link language field)
+- Question: "why doesn't CloudStream show language info for links?" Verified against the installed
+  stable source: `ExtractorLink` (`library/.../utils/ExtractorApi.kt`) exposes only `source` + `name`
+  in the Play dialog (plus `audioTracks: List<AudioFile>`, which is for merging separate audio
+  streams, not display). There is **no** per-link language field, so the only way to surface it is to
+  bake it into the link `name`.
+- The data is in the addons but not where the plugin looked. `streamDisplayName` prefers
+  `name`/`title` and only falls back to `description`, so language-only descriptions were dropped:
+  HdHub (`description` = release name `...Hindi.English...` + bare `Hindi`), PenguPlay
+  (`🎧 Audio: English, Hindi` + dotted filename), Meteor (`Rus.Eng` filename, `🔊 eac3`), while
+  PlavioHD/CNCVerse put it in `title`. Confirmed by live `curl` against the `tools/test-addons.json`
+  sources on 2026-10-18.
+- Fix: new pure `StremioMapping.streamLanguages` / `languageTag` text-mine `name`/`title`/
+  `description`/`behaviorHints.filename` for a deliberately tiny alias set — **English, Hindi,
+  Multi** (`eng`/`hin`/`multi`, plus "dual audio" → `Multi`) — so detection stays cheap.
+  Order-preserving, case-insensitive dedupe, capped at 3. `StremioProvider.candidatesFor` prefixes
+  the label with `[Hindi, English]`. Streams with no detectable language are unchanged. Unit tests
+  added in `StremioStreamTest` for each addon's field layout. `architecture.md` (§Data Flow step 4)
+  updated.
+- No version bump yet — not published.
 
 
