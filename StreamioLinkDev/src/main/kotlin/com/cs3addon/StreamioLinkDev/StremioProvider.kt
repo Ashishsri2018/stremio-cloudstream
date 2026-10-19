@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -65,6 +66,14 @@ class StremioProvider : MainAPI() {
          * sockets; a small window keeps the device and the addon calm without adding much latency.
          */
         const val MAX_CONCURRENT_CATALOGS = 6
+
+        /**
+         * A subtitle addon must not hold the whole link list hostage. PlavioHD's hinted URL
+         * once took ~69 s to answer 404, delaying a first Play by 85 s while the same
+         * episode reloaded in 13 s. Subtitle adds fan out in parallel, so this caps the
+         * whole fan-out (the slow addon is dropped) without shortening the stream timeout.
+         */
+        const val SUBS_FANOUT_TIMEOUT_MS = 20_000L
     }
 
     private val catalogSemaphore = Semaphore(MAX_CONCURRENT_CATALOGS)
@@ -354,7 +363,9 @@ class StremioProvider : MainAPI() {
         val emitted = AtomicInteger(0)
         val subtitleCount = AtomicInteger(0)
         val firstLinkMs = AtomicLong(-1L)
-        val probe = ProbeHints()
+        val globalProbe = ProbeHints()
+        val probesByBase = ConcurrentHashMap<String, ProbeHints>()
+        val streamCapableBases = ConcurrentHashMap.newKeySet<String>()
         val seenSubtitleUrls = ConcurrentHashMap.newKeySet<String>()
 
         // Fan out per addon. Each addon emits its links as soon as it responds so a slow
@@ -390,9 +401,15 @@ class StremioProvider : MainAPI() {
                         val manifest = StremioApi.getManifest(base)
                         if (manifest == null) {
                             StremioDebug.w("[#$callId] addon[$host] manifest NULL -> skip")
+                            manifestDone.getValue(base).complete(Unit)
                             return@launch
                         }
                         manifests[base] = manifest
+                        // Release the subtitle fan-out as soon as the manifest is known, not
+                        // when this addon's (possibly 90 s) stream request finishes. The
+                        // fan-out waits for every manifest, so this keeps the queried addon
+                        // set complete while removing slow stream addons from its critical path.
+                        manifestDone.getValue(base).complete(Unit)
 
                         val resourceNames = StremioMapping.manifestResourceNames(manifest)
                         val streamTypes = StremioMapping.resourceTypesFor(manifest, "stream")
@@ -416,6 +433,9 @@ class StremioProvider : MainAPI() {
                         }
 
                         val addonName = manifest.name?.takeIf { it.isNotBlank() } ?: host
+                        streamCapableBases.add(base)
+                        val addonProbe = ProbeHints()
+                        probesByBase[base] = addonProbe
                         val streamsStarted = System.currentTimeMillis()
                         val streams = StremioApi.getStreams(base, type, payload.id)
                         val embedded = StremioMapping.embeddedSubtitles(streams)
@@ -436,7 +456,9 @@ class StremioProvider : MainAPI() {
                         )
                         subtitleCount.addAndGet(embeddedEmitted)
 
-                        val candidates = candidatesFor(callId, addonName, streams, probe)
+                        val candidates = candidatesFor(
+                            callId, addonName, streams, addonProbe, globalProbe
+                        )
                         StremioDebug.d(
                             "[#$callId] addon[$host] candidates=${candidates.size} " +
                                 "skipped=${streams.size - candidates.size}"
@@ -503,7 +525,9 @@ class StremioProvider : MainAPI() {
                     callId,
                     payload,
                     manifests,
-                    probe,
+                    globalProbe,
+                    probesByBase,
+                    streamCapableBases,
                     seenSubtitleUrls,
                     subtitleCallback,
                 )
@@ -528,7 +552,8 @@ class StremioProvider : MainAPI() {
         callId: Int,
         addonName: String,
         streams: List<StremioStream>,
-        probe: ProbeHints,
+        addonProbe: ProbeHints,
+        globalProbe: ProbeHints,
     ): List<LinkCandidate> {
         val candidates = ArrayList<LinkCandidate>(streams.size)
         streams.forEachIndexed { index, stream ->
@@ -570,15 +595,19 @@ class StremioProvider : MainAPI() {
 
             val hash = stream.behaviorHints?.videoHash?.takeIf { it.isNotBlank() }
             val size = stream.behaviorHints?.videoSize?.takeIf { it > 0 }
-            if (probe.offer(hash, size, "$addonName#$index")) {
+            val source = "$addonName#$index"
+            if (addonProbe.offer(hash, size, source)) {
                 StremioDebug.d(
-                    "[#$callId] probe updated hash=${probe.videoHash} (${probe.hashSource}) " +
-                        "size=${probe.videoSize} (${probe.sizeSource})"
+                    "[#$callId] addonProbe[$addonName] updated " +
+                        "hash=${addonProbe.videoHash} (${addonProbe.hashSource}) " +
+                        "size=${addonProbe.videoSize} (${addonProbe.sizeSource})"
                 )
-            } else if (hash != null || size != null) {
+            }
+            if (globalProbe.offer(hash, size, source)) {
                 StremioDebug.d(
-                    "[#$callId] probe ignored stream#$index hash=$hash size=$size " +
-                        "(already have ${probe.videoHash}/${probe.videoSize})"
+                    "[#$callId] globalProbe updated " +
+                        "hash=${globalProbe.videoHash} (${globalProbe.hashSource}) " +
+                        "size=${globalProbe.videoSize} (${globalProbe.sizeSource})"
                 )
             }
         }
@@ -586,9 +615,10 @@ class StremioProvider : MainAPI() {
     }
 
     /**
-     * First non-empty `videoHash`/`videoSize` seen across all stream addons. Stremio's
-     * subtitle extra expects a matching pair, so both the values and where they came from
-     * are tracked and logged (the dev build uses this to diagnose subtitle 404s).
+     * First non-empty `videoHash`/`videoSize` seen for one scope. Each stream addon gets its
+     * own probe so a hint from PenguPlay is never sent to CNCVerse/PlavioHD (which answer the
+     * hinted URL with 404/HTML and made first Play slow); [loadLinks] also keeps a global
+     * probe as the fallback for subtitle-only addons that have no streams of their own.
      */
     private class ProbeHints {
         @Volatile var videoHash: String? = null
@@ -648,15 +678,17 @@ class StremioProvider : MainAPI() {
         callId: Int,
         payload: StremioPayload,
         manifests: Map<String, StremioManifest>,
-        probe: ProbeHints,
+        globalProbe: ProbeHints,
+        probesByBase: Map<String, ProbeHints>,
+        streamCapableBases: Set<String>,
         seen: MutableSet<String>,
         subtitleCallback: (SubtitleFile) -> Unit,
     ): Int {
         val type = payload.type.lowercase()
         StremioDebug.d(
             "[#$callId] SUBS fanout BEGIN id=${payload.id} manifests=${manifests.size} " +
-                "probeHash=${probe.videoHash} (${probe.hashSource}) " +
-                "probeSize=${probe.videoSize} (${probe.sizeSource})"
+                "globalHash=${globalProbe.videoHash} (${globalProbe.hashSource}) " +
+                "globalSize=${globalProbe.videoSize} (${globalProbe.sizeSource})"
         )
 
         val subtitleAddons = manifests.filter { (base, manifest) ->
@@ -690,9 +722,32 @@ class StremioProvider : MainAPI() {
         coroutineScope {
             subtitleAddons.forEach { (base, _) ->
                 launch {
-                    val subtitles = StremioApi.getSubtitles(
-                        base, type, payload.id, probe.videoHash, probe.videoSize
+                    // A stream addon's own hints describe its own releases; only subtitle-only
+                    // addons fall back to the global first-stream pair. Letting a foreign hint
+                    // through is what made PlavioHD spend ~69 s on a 404.
+                    val ownHints = probesByBase[base]
+                    val hints = if (base in streamCapableBases && ownHints != null) {
+                        ownHints
+                    } else {
+                        globalProbe
+                    }
+                    val hintSource = if (hints === globalProbe) "global" else "own"
+                    StremioDebug.d(
+                        "[#$callId] SUBS hints addon=${hostOf(base)} source=$hintSource " +
+                            "hash=${hints.videoHash} size=${hints.videoSize}"
                     )
+                    val subtitles = withTimeoutOrNull(SUBS_FANOUT_TIMEOUT_MS) {
+                        StremioApi.getSubtitles(
+                            base, type, payload.id, hints.videoHash, hints.videoSize
+                        )
+                    }
+                    if (subtitles == null) {
+                        StremioDebug.w(
+                            "[#$callId] SUBS TIMEOUT addon=${hostOf(base)} " +
+                                "after=${SUBS_FANOUT_TIMEOUT_MS}ms"
+                        )
+                        return@launch
+                    }
                     val emitted = emitSubtitles(
                         callId,
                         "ext:${hostOf(base)}",

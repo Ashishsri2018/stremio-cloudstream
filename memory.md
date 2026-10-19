@@ -466,3 +466,18 @@
   `SUB EMIT/DUP/DROP`. `EMPTY -> stopping` or `TRANSPORT null -> break` mean the alternate
   (plain) subtitle URL was never tried — the first thing to check for missing subs.
 - version 101 → 102.
+
+## 2026-10-19 — v103: per-addon subtitle hints + capped fan-out
+- Device capture (`tt3107288:1:4`, dev build) showed **no link shortfall**: first Play and
+  Reload both emitted 34 links / 21 subs. First Play took 85.7 s vs 13.2 s on reload because
+  PlavioHD's hinted subtitle URL (`videoSize` from PenguPlay) hung ~69 s before 404, and the
+  subtitle fan-out waited for every stream job before starting.
+- Fixes: each stream addon gets its own `ProbeHints`, so a foreign `videoHash`/`videoSize` is
+  never sent to another addon; subtitle-only addons still use the global first-stream pair.
+  `manifestDone` is released as soon as the manifest settles (not after the addon's streams),
+  and each subtitle addon is capped at 20 s (`SUBS_FANOUT_TIMEOUT_MS`).
+- Hindi was **upstream**, not a plugin drop: CNCVerse's current response has only `fil` (1 sub,
+  no Kisskh stream); Pengu's 20 subs contain no Hindi; PlavioHD returns an empty subtitle list.
+  The earlier `hin` came from a CNCVerse Kisskh stream that is no longer served. A dedicated
+  subtitle addon in the source list is the way to add Hindi.
+- version 102 → 103.
