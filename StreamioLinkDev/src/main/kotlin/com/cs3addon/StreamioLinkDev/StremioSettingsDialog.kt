@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
  */
 object StremioSettingsDialog {
 
-    private const val TAG = "StreamioLink"
+    private const val TAG = "StreamioLinkDev"
 
     fun show(context: Context) {
         val density = context.resources.displayMetrics.density
@@ -127,7 +127,7 @@ object StremioSettingsDialog {
         val scrollView = ScrollView(context).apply { addView(container) }
 
         val dialog = AlertDialog.Builder(context)
-            .setTitle("StreamioLink settings")
+            .setTitle("StreamioLink Dev settings")
             .setView(scrollView)
             .setPositiveButton("Save", null)
             .setNegativeButton("Cancel", null)
@@ -148,7 +148,7 @@ object StremioSettingsDialog {
                     useCatalogAsSource = useCatalogAsSource.isChecked,
                 )
                 dialog.dismiss()
-                showToast("StreamioLink settings saved")
+                showToast("StreamioLink Dev settings saved")
                 warmUpAddons()
             }
         }
@@ -196,7 +196,7 @@ object StremioSettingsDialog {
 
                 if (names.isNotEmpty()) {
                     Handler(Looper.getMainLooper()).post {
-                        showToast("StreamioLink loaded: ${names.joinToString(", ")}")
+                        showToast("StreamioLink Dev loaded: ${names.joinToString(", ")}")
                     }
                 }
             } catch (t: Throwable) {

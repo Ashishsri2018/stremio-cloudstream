@@ -46,7 +46,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class StremioProvider : MainAPI() {
     override var mainUrl = StremioSettings.DEFAULT_CATALOG_URL
-    override var name = "StreamioLink"
+    override var name = "StreamioLink Dev"
     override var lang = "en"
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Others)
@@ -57,7 +57,7 @@ class StremioProvider : MainAPI() {
     override val searchTimeoutMs = 60_000L
 
     private companion object {
-        const val TAG = "StreamioLink"
+        const val TAG = "StreamioLinkDev"
         const val DEFAULT_PAGE_SIZE = 20
         const val MAX_LINKS = 500
 

@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object StremioApi {
 
-    private const val TAG = "StreamioLink"
+    private const val TAG = "StreamioLinkDev"
     private const val MANIFEST_TTL_MS = 30 * 60 * 1000L
     private const val MANIFEST_CACHE_MAX = 32
 

@@ -6,7 +6,7 @@ dependencies {
 }
 
 // Use an integer for version numbers
-version = 100
+version = 101
 
 cloudstream {
     description = "[DEV] Experimental StreamioLink build for testing. Installs as a separate provider; the stable plugin is unaffected."
