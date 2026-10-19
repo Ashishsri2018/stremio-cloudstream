@@ -19,6 +19,17 @@ Canonical repo: `Ashishsri2018/stremio-cloudstream` (CI publishes builds there).
 - Live addons used for playtesting are recorded in `tools/test-addons.json` (nuvio catalog + hdhub/pengu/cnc/meteor, test id `tt0111161`). Keep it updated when addon configs change.
 - Local builds need Android SDK 35 (`compileSdk 35`), a `local.properties`/`ANDROID_HOME`, and network for Gradle 8.12 + JitPack — none present here, so treat `.github/workflows/build.yml` as the build source of truth (JDK 17 + Android SDK).
 
+## Dev branch — experimental plugin (`StreamioLinkDev`)
+
+Experiments live on the `dev` branch so the stable `StreamioLink` is never touched. On `dev` the module/package is `StreamioLinkDev` (distinct `internalName`), so it installs **alongside** the stable plugin; both share the `streamiolink_*` settings. Dev repo URL (must include the branch):
+`https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/dev/repo.json` → `builds-dev/plugins.json`.
+
+CI: `.github/workflows/build-dev.yml` runs on `dev` only and publishes to `builds-dev` (it rewrites the generated `/builds/` URLs to `/builds-dev/`). The stable `build.yml`/`builds` branch is untouched.
+
+Workflow going forward:
+- Experiment on `dev`, bump `version` in `StreamioLinkDev/build.gradle.kts` (currently `101`), push → CI republishes `builds-dev`.
+- When a fix wins, cherry-pick the code change onto `main` (skip the rename) and bump the stable version.
+
 ## On-device debugging — rish + logcat (verified working)
 
 This shell is a **PRoot Ubuntu container** inside Termux on the test device (Samsung SM-A156E; CloudStream is `com.lagradost.cloudstream3`). We can reach the device through **Shizuku via `rish`** and read `logcat`. There is **no `adb` binary on the device** (`/system/bin/adb` doesn't exist) — `rish` *is* the adb shell (uid 2000 `shell`). Use `rish -c '<cmd>'` for `getprop`/`pm`/`settings`/`cmd` and for `logcat`.
