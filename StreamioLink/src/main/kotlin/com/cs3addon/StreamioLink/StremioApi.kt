@@ -51,7 +51,7 @@ object StremioApi {
      * hammer the addons again. Only successful, non-empty results are cached so a transient
      * failure is not remembered.
      */
-    private const val STREAM_CACHE_TTL_MS = 5 * 60 * 1000L
+    private const val STREAM_CACHE_TTL_MS = 60_000L
     private const val STREAM_CACHE_MAX = 64
 
     private data class CachedStreams(val streams: List<StremioStream>, val fetchedAt: Long)

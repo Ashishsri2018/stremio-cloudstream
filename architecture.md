@@ -55,7 +55,7 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    over semantic path hints: `.mpd` → DASH and `.m3u8` → HLS win outright, a known video-container
    extension (`.mp4/.mkv/.webm/…`) → VIDEO, and only then do the `/hls`, `/playlist`, `mpegurl`
    path hints and a `.m3u8` hidden in a proxy query apply. This keeps a DASH manifest under an
-   `/hls/` path DASH and a direct file in a `playlist` folder VIDEO. Stream JSON is cached in memory per addon/id for 5 minutes
+   `/hls/` path DASH and a direct file in a `playlist` folder VIDEO. Stream JSON is cached in memory per addon/id for 60 seconds
    (`StremioApi`), so replaying an episode does not refetch slow addons. Headers come from
    `behaviorHints.proxyHeaders.request`, falling back to a top-level `behaviorHints.headers` for
    addons that emit headers there; `proxyHeaders.request` always wins. When the addon supplies no

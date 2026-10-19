@@ -418,6 +418,24 @@
 - Fix: `StremioMapping.buildSubtitlesUrlCandidates` returns `[with-extra, plain]` (or just
   `[plain]` with no hints); `StremioApi.getSubtitles` walks it, falling back to the plain URL on a
   non-JSON body. A null body (timeout/transport failure) does **not** retry, to avoid a second full
-  90 s wait. Unit-tested in `StremioManifestTest`; `architecture.md` §5 updated. Bumped 14 → 15.
+   90 s wait. Unit-tested in `StremioManifestTest`; `architecture.md` §5 updated. Bumped 14 → 15.
+
+## 2026-10-19 — shorten stream cache so "reload links" refetches — version 16
+- Report: same episode (The Flash S1E4) gave cnc 7 links on first play, 24 after "reload
+  links", vs 20 in Nuvio; pengu/playvio counts also drifted. Live `curl` of cnc for
+  `tt3107288:1:4` returned 9 streams (size 9129) cold, then 20 (size 18651) minutes later —
+  the aggregator itself returns partial results until its server-side cache warms. So most of
+  the app-to-app/phase gap is addon-side, not a parse bug (the plugin forwards every valid
+  `url`/`infoHash`; only the `"url": false` entry and whitespace URLs are dropped).
+- Real plugin-side aggravator: the 5-minute `streamCache` froze cnc's cold/partial result and
+  re-served it, so reloading *because* the first set looked short could not improve it
+  (bugG #11). Reduced `StremioApi.STREAM_CACHE_TTL_MS` 5 min → **60 s**: quick re-open stays
+  cheap, a deliberate reload refreshes. `STREAM_TIMEOUT_MS` stays 90 s (real aggregators answer
+  in 6–30 s) and `loadLinksTimeoutMs` stays 180 s so the stream phase (≤90 s) plus the
+  post-stream subtitle phase (≤90 s) both fit.
+- Not changed here: cnc's `subtitles` resource 404s (empty body) on any path extra and works on
+  the plain URL; v15's `[with-extra, plain]` fallback covers it. Whether the reported missing
+  cnc Hindi sub is v15 or a separate issue needs a device logcat capture. Bumped 15 → 16.
+
 
 
