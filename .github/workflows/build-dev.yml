@@ -72,6 +72,11 @@ jobs:
           done
           exit 1
 
+      - name: Point generated plugin URLs at builds-dev
+        run: |
+          sed -i 's#/builds/#/builds-dev/#g' build/plugins.json
+          cat build/plugins.json
+
       - name: Prepare Deployment Folder
         run: |
           mkdir -p output_builds
