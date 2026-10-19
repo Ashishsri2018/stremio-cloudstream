@@ -1,4 +1,4 @@
-package com.cs3addon.StreamioLink
+package com.cs3addon.StreamioLinkDev
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper

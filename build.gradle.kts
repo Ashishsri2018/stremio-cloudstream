@@ -45,7 +45,7 @@ subprojects {
     }
 
     android {
-        namespace = "com.cs3addon.StreamioLink"
+        namespace = "com.cs3addon.StreamioLinkDev"
 
         defaultConfig {
             minSdk = 21

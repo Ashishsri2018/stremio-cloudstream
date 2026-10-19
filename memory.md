@@ -437,5 +437,17 @@
   the plain URL; v15's `[with-extra, plain]` fallback covers it. Whether the reported missing
   cnc Hindi sub is v15 or a separate issue needs a device logcat capture. Bumped 15 → 16.
 
+## 2026-10-19 — experimental dev branch/plugin (`StreamioLinkDev`)
+- Branch `dev` builds a separate plugin so experiments never touch the stable `StreamioLink`.
+- Module renamed `StreamioLink/` → `StreamioLinkDev/`; package/namespace →
+  `com.cs3addon.StreamioLinkDev`. The distinct internalName keeps the dev plugin from replacing
+  the stable one on-device (CloudStream keys plugins by internalName, not repo URL).
+- `.github/workflows/build-dev.yml` triggers only on `dev` and publishes to the `builds-dev`
+  branch; `repo.json` on `dev` points at `builds-dev/plugins.json`. `main`/`builds` untouched.
+- Install URL: `https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/dev/repo.json`
+- Settings keys stay `streamiolink_*`, so the dev plugin shares the addon config with stable.
+- Version line is `100`; bump it for each dev publish.
+- Merge-back: cherry-pick the code change onto `main`; do not carry the module/package rename.
+
 
 

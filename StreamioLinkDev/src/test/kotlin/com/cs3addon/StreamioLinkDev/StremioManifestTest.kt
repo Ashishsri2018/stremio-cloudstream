@@ -1,4 +1,4 @@
-package com.cs3addon.StreamioLink
+package com.cs3addon.StreamioLinkDev
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

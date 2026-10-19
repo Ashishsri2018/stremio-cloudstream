@@ -1,4 +1,4 @@
-package com.cs3addon.StreamioLink
+package com.cs3addon.StreamioLinkDev
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

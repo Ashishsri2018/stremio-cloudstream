@@ -6,10 +6,10 @@ dependencies {
 }
 
 // Use an integer for version numbers
-version = 16
+version = 100
 
 cloudstream {
-    description = "Play streams from Stremio addons. Configure one catalog addon (default: Cinemeta) plus as many source addons as you like in the settings."
+    description = "[DEV] Experimental StreamioLink build for testing. Installs as a separate provider; the stable plugin is unaffected."
     authors = listOf("Ashishsri2018")
 
     /**
