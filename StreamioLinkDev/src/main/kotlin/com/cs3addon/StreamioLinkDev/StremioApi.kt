@@ -1,6 +1,5 @@
 package com.cs3addon.StreamioLinkDev
 
-import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -14,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object StremioApi {
 
-    private const val TAG = "StreamioLinkDev"
     private const val MANIFEST_TTL_MS = 30 * 60 * 1000L
     private const val MANIFEST_CACHE_MAX = 32
 
@@ -85,20 +83,36 @@ object StremioApi {
     // ---------------------------------------------------------------- manifest
 
     suspend fun getManifest(rawUrl: String?): StremioManifest? {
-        val base = StremioMapping.normalizeAddonUrl(rawUrl) ?: return null
+        val base = StremioMapping.normalizeAddonUrl(rawUrl) ?: run {
+            StremioDebug.w("manifest SKIP invalid url=${StremioDebug.clip(rawUrl, 200)}")
+            return null
+        }
         val now = System.currentTimeMillis()
 
         cacheMutex.withLock {
             val cached = manifestCache[base]
             if (cached != null && now - cached.fetchedAt < MANIFEST_TTL_MS) {
+                StremioDebug.d(
+                    "manifest CACHE base=$base age=${now - cached.fetchedAt}ms name=${cached.manifest.name}"
+                )
                 return cached.manifest
             }
         }
-        if (isBackingOff(base)) return staleManifest(base)
+        if (isBackingOff(base)) {
+            val stale = staleManifest(base)
+            StremioDebug.w("manifest BACKOFF base=$base stale=${stale != null}")
+            return stale
+        }
 
+        val startedAt = System.currentTimeMillis()
         return try {
-            val json = request("$base/manifest.json", DEFAULT_TIMEOUT_MS)
+            val json = request(
+                "$base/manifest.json",
+                DEFAULT_TIMEOUT_MS,
+                "manifest(${StremioDebug.host(base)})",
+            )
             if (json == null) {
+                StremioDebug.w("manifest FAIL base=$base dur=${StremioDebug.ms(startedAt)}ms")
                 markFailure(base)
                 return staleManifest(base)
             }
@@ -108,11 +122,20 @@ object StremioApi {
                 pruneManifestsLocked(now)
                 manifestCache[base] = CachedManifest(manifest, now)
             }
+            StremioDebug.d(
+                "manifest OK base=$base name=${manifest.name} version=${manifest.version} " +
+                    "resources=${StremioDebug.join(StremioMapping.manifestResourceNames(manifest))} " +
+                    "types=${StremioDebug.join(manifest.types)} " +
+                    "idPrefixes=${StremioDebug.join(manifest.idPrefixes)} " +
+                    "catalogs=${manifest.catalogs?.size ?: 0} dur=${StremioDebug.ms(startedAt)}ms"
+            )
             manifest
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to load manifest for $base: ${t.message}")
+            StremioDebug.e(
+                "manifest PARSE/ERR base=$base ${t::class.java.simpleName}: ${t.message}"
+            )
             markFailure(base)
             staleManifest(base)
         }
@@ -134,20 +157,31 @@ object StremioApi {
 
     suspend fun getCatalog(base: String, type: String, catalogId: String, extra: String? = null): List<StremioMetaPreview> {
         val url = StremioMapping.buildCatalogUrl(base, type, catalogId, extra)
-        if (isBackingOff(url)) return emptyList()
+        if (isBackingOff(url)) {
+            StremioDebug.w("catalog BACKOFF id=$catalogId url=$url")
+            return emptyList()
+        }
+        val startedAt = System.currentTimeMillis()
         return try {
-            val json = request(url, DEFAULT_TIMEOUT_MS)
+            val json = request(url, DEFAULT_TIMEOUT_MS, "catalog($catalogId)")
             if (json == null) {
+                StremioDebug.w("catalog FAIL id=$catalogId dur=${StremioDebug.ms(startedAt)}ms")
                 markFailure(url)
                 emptyList()
             } else {
                 clearFailure(url)
-                StremioMapping.parseCatalog(json)
+                val items = StremioMapping.parseCatalog(json)
+                StremioDebug.d(
+                    "catalog OK id=$catalogId items=${items.size} dur=${StremioDebug.ms(startedAt)}ms"
+                )
+                items
             }
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
-            Log.e(TAG, "Catalog $catalogId failed: ${t.message}")
+            StremioDebug.e(
+                "catalog PARSE/ERR id=$catalogId ${t::class.java.simpleName}: ${t.message}"
+            )
             markFailure(url)
             emptyList()
         }
@@ -155,20 +189,30 @@ object StremioApi {
 
     suspend fun getMeta(base: String, type: String, id: String): StremioMetaDetails? {
         val url = StremioMapping.buildMetaUrl(base, type, id)
-        if (isBackingOff(url)) return null
+        if (isBackingOff(url)) {
+            StremioDebug.w("meta BACKOFF id=$id url=$url")
+            return null
+        }
+        val startedAt = System.currentTimeMillis()
         return try {
-            val json = request(url, DEFAULT_TIMEOUT_MS)
+            val json = request(url, DEFAULT_TIMEOUT_MS, "meta($id@${StremioDebug.host(base)})")
             if (json == null) {
+                StremioDebug.w("meta FAIL id=$id dur=${StremioDebug.ms(startedAt)}ms")
                 markFailure(url)
                 null
             } else {
                 clearFailure(url)
-                StremioMapping.parseMeta(json)
+                val meta = StremioMapping.parseMeta(json)
+                StremioDebug.d(
+                    "meta OK id=$id name=${meta?.name} videos=${meta?.videos?.size ?: 0} " +
+                        "dur=${StremioDebug.ms(startedAt)}ms"
+                )
+                meta
             }
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
-            Log.e(TAG, "Meta $id failed: ${t.message}")
+            StremioDebug.e("meta PARSE/ERR id=$id ${t::class.java.simpleName}: ${t.message}")
             markFailure(url)
             null
         }
@@ -181,23 +225,34 @@ object StremioApi {
         videoHash: String? = null,
         videoSize: Long? = null,
     ): List<StremioSubtitle> {
+        val startedAt = System.currentTimeMillis()
+        val candidates = StremioMapping.buildSubtitlesUrlCandidates(base, type, id, videoHash, videoSize)
+        StremioDebug.d(
+            "subs START id=$id type=$type base=${StremioDebug.host(base)} " +
+                "hash=$videoHash size=$videoSize candidates=${candidates.size}"
+        )
         // Try the canonical hint-bearing URL first, then the extra-less one. Addons such as
         // PlavioHD implement only `/subtitles/{type}/{id}.json` and answer any path extra
         // with an HTML 404; NiceHttp does not throw on that status, so the body reaches the
         // parser and fails, which is the signal to retry the plain shape.
-        for (url in StremioMapping.buildSubtitlesUrlCandidates(base, type, id, videoHash, videoSize)) {
-            if (isBackingOff(url)) continue
+        for ((index, url) in candidates.withIndex()) {
+            val label = "subs(${StremioDebug.host(base)}#$index)"
+            if (isBackingOff(url)) {
+                StremioDebug.w("$label BACKOFF url=$url")
+                continue
+            }
             val json = try {
-                request(url, STREAM_TIMEOUT_MS)
+                request(url, STREAM_TIMEOUT_MS, label)
             } catch (t: CancellationException) {
                 throw t
             } catch (t: Throwable) {
-                Log.e(TAG, "Subtitles for $id failed on $base: ${t.message}")
+                StremioDebug.e("$label ERROR ${t::class.java.simpleName}: ${t.message}")
                 null
             }
             // A null body is a transport failure/timeout: do not spend another full timeout
             // on the alternate shape, just record it and stop.
             if (json == null) {
+                StremioDebug.w("$label TRANSPORT null -> break (alternate shape not tried)")
                 markFailure(url)
                 break
             }
@@ -208,12 +263,24 @@ object StremioApi {
             }
             if (subtitles != null) {
                 clearFailure(url)
+                StremioDebug.d(
+                    "$label OK count=${subtitles.size} " +
+                        "langs=${StremioDebug.join(subtitles.map { StremioMapping.subtitleLanguage(it) })} " +
+                        "dur=${StremioDebug.ms(startedAt)}ms"
+                )
+                if (subtitles.isEmpty() && index < candidates.lastIndex) {
+                    StremioDebug.w("$label EMPTY -> stopping (alternate shape not tried)")
+                }
                 return subtitles
             }
             // Non-JSON body (e.g. an HTML 404): back off this shape so later episodes skip
             // straight to the next candidate, then try it.
+            StremioDebug.w("$label PARSE FAIL body=${StremioDebug.preview(json)} -> next shape")
             markFailure(url)
         }
+        StremioDebug.w(
+            "subs NONE id=$id base=${StremioDebug.host(base)} dur=${StremioDebug.ms(startedAt)}ms"
+        )
         return emptyList()
     }
 
@@ -222,31 +289,69 @@ object StremioApi {
     suspend fun getStreams(base: String, type: String, id: String): List<StremioStream> {
         val key = "$base|$type|$id"
         val now = System.currentTimeMillis()
-        streamCache[key]
-            ?.takeIf { now - it.fetchedAt < STREAM_CACHE_TTL_MS }
-            ?.let { return it.streams }
+        streamCache[key]?.let { cached ->
+            val age = now - cached.fetchedAt
+            if (age < STREAM_CACHE_TTL_MS) {
+                StremioDebug.d(
+                    "streams CACHE HIT id=$id base=${StremioDebug.host(base)} age=${age}ms " +
+                        "count=${cached.streams.size}"
+                )
+                return cached.streams
+            }
+            StremioDebug.d(
+                "streams CACHE STALE id=$id base=${StremioDebug.host(base)} age=${age}ms"
+            )
+        }
 
         val url = StremioMapping.buildStreamUrl(base, type, id)
-        if (isBackingOff(url)) return emptyList()
+        if (isBackingOff(url)) {
+            StremioDebug.w(
+                "streams BACKOFF id=$id base=${StremioDebug.host(base)} url=$url"
+            )
+            return emptyList()
+        }
 
+        val startedAt = System.currentTimeMillis()
         return try {
-            val json = request(url, STREAM_TIMEOUT_MS)
+            val json = request(url, STREAM_TIMEOUT_MS, "streams($id@${StremioDebug.host(base)})")
             if (json == null) {
+                StremioDebug.w(
+                    "streams FAIL id=$id base=${StremioDebug.host(base)} " +
+                        "dur=${StremioDebug.ms(startedAt)}ms"
+                )
                 markFailure(url)
                 emptyList()
             } else {
                 clearFailure(url)
-                val streams = StremioMapping.parseStreams(json)
+                val streams = try {
+                    StremioMapping.parseStreams(json)
+                } catch (t: Throwable) {
+                    if (t is CancellationException) throw t
+                    StremioDebug.e(
+                        "streams PARSE FAIL id=$id base=${StremioDebug.host(base)} " +
+                            "${t::class.java.simpleName}: ${t.message} body=${StremioDebug.preview(json)}"
+                    )
+                    markFailure(url)
+                    return emptyList()
+                }
                 if (streams.isNotEmpty()) {
                     pruneStreams(now)
                     streamCache[key] = CachedStreams(streams, now)
                 }
+                StremioDebug.d(
+                    "streams OK id=$id base=${StremioDebug.host(base)} count=${streams.size} " +
+                        "cached=${streams.isNotEmpty()} dur=${StremioDebug.ms(startedAt)}ms " +
+                        "body=${StremioDebug.preview(json)}"
+                )
                 streams
             }
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
-            Log.e(TAG, "Streams for $id failed on $base: ${t.message}")
+            StremioDebug.e(
+                "streams ERROR id=$id base=${StremioDebug.host(base)} " +
+                    "${t::class.java.simpleName}: ${t.message}"
+            )
             markFailure(url)
             emptyList()
         }
@@ -266,9 +371,49 @@ object StremioApi {
      * leaves OkHttp's 10 s read timeout in place. Slow aggregator addons (PenguPlay etc.)
      * routinely need longer than that to produce a first byte, so they must be given an
      * explicit per-request timeout. NiceHttp takes the timeout in seconds.
+     *
+     * [label] is diagnostics-only: every request logs status, size, content type and
+     * duration, so a first-play vs reload difference is visible in one capture.
      */
-    private suspend fun request(url: String, timeoutMs: Long): String? =
-        kotlinx.coroutines.withTimeoutOrNull(timeoutMs + 1_000L) {
-            app.get(url, timeout = (timeoutMs / 1000L).coerceAtLeast(1L)).text
+    private suspend fun request(url: String, timeoutMs: Long, label: String): String? {
+        val startedAt = System.currentTimeMillis()
+        StremioDebug.d("$label REQ url=$url timeout=${timeoutMs}ms")
+        return try {
+            kotlinx.coroutines.withTimeoutOrNull(timeoutMs + 1_000L) {
+                val response = app.get(url, timeout = (timeoutMs / 1000L).coerceAtLeast(1L))
+                val body = response.text
+                val contentType = response.headers["content-type"].orEmpty()
+                StremioDebug.d(
+                    "$label RESP http=${response.code} bytes=${body.length} ct=$contentType " +
+                        "dur=${StremioDebug.ms(startedAt)}ms final=${response.url}"
+                )
+                if (response.code !in 200..299) {
+                    StremioDebug.w(
+                        "$label NON-2XX http=${response.code} body=${StremioDebug.clip(body, 200)}"
+                    )
+                } else if (body.isBlank()) {
+                    StremioDebug.w("$label EMPTY body http=${response.code} url=$url")
+                } else {
+                    val trimmed = body.trimStart()
+                    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+                        StremioDebug.w(
+                            "$label NON-JSON body=${StremioDebug.clip(body, 200)}"
+                        )
+                    }
+                }
+                body
+            } ?: run {
+                StremioDebug.w("$label TIMEOUT dur=${StremioDebug.ms(startedAt)}ms url=$url")
+                null
+            }
+        } catch (t: CancellationException) {
+            throw t
+        } catch (t: Throwable) {
+            StremioDebug.e(
+                "$label ERROR dur=${StremioDebug.ms(startedAt)}ms " +
+                    "${t::class.java.simpleName}: ${t.message} url=$url"
+            )
+            null
         }
+    }
 }

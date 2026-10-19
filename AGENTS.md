@@ -43,17 +43,19 @@ This shell is a **PRoot Ubuntu container** inside Termux on the test device (Sam
 - Why a wrapper: the stock `rish` script fails here — its Android-14 "dex must be non-writable" guard can't `chmod` (Android ACLs make it a no-op under PRoot), and its app-id auto-detection walks `/proc` names that are container paths, so it never finds `com.termux`. The wrapper skips both.
 - First call may print `Waiting for Shizuku authorization... check your notifications.` — approve it in the Shizuku notification on the device.
 
-Live plugin capture (tags: `StreamioLink` from our plugin; `PlayViewGen`/`RepoLink`/`PlayerGen` are CloudStream core):
+Live plugin capture (tags: `StreamioLink` stable / `StreamioLinkDev` dev; `PlayViewGen`/`RepoLink`/`PlayerGen` are CloudStream core):
 
 ```sh
 rish -c 'logcat -c'                                                        # clear buffer
-nohup rish -c 'logcat -v time -s StreamioLink:V PlayViewGen:V RepoLink:V PlayerGen:V' \
+nohup rish -c 'logcat -v time -s StreamioLink StreamioLinkDev:V PlayViewGen:V RepoLink:V PlayerGen:V' \
   > /root/streamio.log 2>&1 & echo $! > /root/streamio.pid                 # start (use `-s`, not `*:S`)
 # reproduce on device: info card -> Play (note link count); back -> long-press episode -> Reload mirrors
 kill "$(cat /root/streamio.pid)"                                          # stop
 grep -c "Loaded ExtractorLink" /root/streamio.log                         # count links
 grep -nE "PlayViewGen|RepoLink|StreamioLink" /root/streamio.log           # phase markers
 ```
+
+Dev build diagnostics (tag `StreamioLinkDev`): each call is bracketed by `[loadLinks#N] START` / `END` (`emitted`, `subs`, `firstLink`, `total`), so first Play vs Reload mirrors can be compared by `N`. Per-addon lines log manifest resources/types/prefixes, `streams=`/`breakdown=`, `candidates=`/`skipped=`, cache hits and back-off skips. `LINK #n` logs every emitted link; `SUBS ...` and `SUB EMIT/DUP/DROP` log the hint pair (`videoHash`/`videoSize` + source), each subtitle URL shape, HTTP status/size and the parsed language count.
 
 Split phases at each `PlayViewGen: loadLinks` line (Play is the first, Reload mirrors the second); count `Loaded ExtractorLink` before/after. A verified run of *The Avengers* (`tt0848228`) produced 274 links in one phase.
 

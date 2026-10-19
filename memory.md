@@ -451,3 +451,18 @@
 
 
 
+
+## 2026-10-19 — dev diagnostics for first-play links + missing subtitles
+- Added `StremioDebug` (tag `StreamioLinkDev`) and verbose logs across `StremioApi` /
+  `StremioProvider`. Capture with `logcat -s StreamioLinkDev:V`.
+- Every `loadLinks` call is bracketed by `[loadLinks#N] START/END` (`emitted`, `subs`,
+  `firstLink`, `total`); compare the first Play with Reload mirrors by `N`. Per addon:
+  manifest resources/types/prefixes, stream body preview + count, cache hit/age, back-off
+  skips, classified `breakdown=` (direct/yt/magnet/badUrl/noUrl), `candidates=`/`skipped=`,
+  every emitted `LINK #n` (kind/quality/torrent/host) and a `DONE`/`FAIL` summary.
+- Subtitles: `SUBS check` per manifest (resource/types/prefixes/type/id match), the probe
+  `videoHash`/`videoSize` pair **and its source stream**, every URL shape (`#0` hinted,
+  `#1` plain), HTTP code/bytes/content-type, parse-failure body preview, and
+  `SUB EMIT/DUP/DROP`. `EMPTY -> stopping` or `TRANSPORT null -> break` mean the alternate
+  (plain) subtitle URL was never tried — the first thing to check for missing subs.
+- version 101 → 102.

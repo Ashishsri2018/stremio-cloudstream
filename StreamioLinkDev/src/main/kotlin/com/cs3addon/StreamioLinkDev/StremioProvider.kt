@@ -1,6 +1,5 @@
 package com.cs3addon.StreamioLinkDev
 
-import com.lagradost.api.Log
 import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
@@ -36,7 +35,7 @@ import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Cloudstream provider that plays content through Stremio addons.
@@ -57,7 +56,6 @@ class StremioProvider : MainAPI() {
     override val searchTimeoutMs = 60_000L
 
     private companion object {
-        const val TAG = "StreamioLinkDev"
         const val DEFAULT_PAGE_SIZE = 20
         const val MAX_LINKS = 500
 
@@ -70,6 +68,9 @@ class StremioProvider : MainAPI() {
     }
 
     private val catalogSemaphore = Semaphore(MAX_CONCURRENT_CATALOGS)
+
+    /** Monotonic id for diagnostics: distinguishes the first Play from a later Reload mirrors. */
+    private val loadLinksCalls = AtomicInteger(0)
 
     private data class LinkCandidate(
         val addonName: String,
@@ -163,7 +164,7 @@ class StremioProvider : MainAPI() {
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
-            Log.e(TAG, "Catalog ${ref.id} page $page failed: ${t.message}")
+            StremioDebug.e("catalog ${ref.id} page $page failed: ${t.message}")
             emptyList()
         }
 
@@ -192,7 +193,7 @@ class StremioProvider : MainAPI() {
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
-            Log.e(TAG, "Home catalog $id failed: ${t.message}")
+            StremioDebug.e("home catalog $id failed: ${t.message}")
             return null
         }
         if (StremioMapping.catalogSupportsSkip(catalog)) catalogOffsets[key] = offset + items.size
@@ -260,7 +261,7 @@ class StremioProvider : MainAPI() {
                     } catch (t: CancellationException) {
                         throw t
                     } catch (t: Throwable) {
-                        Log.e(TAG, "Search catalog $id failed: ${t.message}")
+                        StremioDebug.e("search catalog $id failed: ${t.message}")
                         emptyList()
                     }
                 }
@@ -326,19 +327,34 @@ class StremioProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val payload = StremioMapping.decodePayload(data) ?: return false
+        val callId = loadLinksCalls.incrementAndGet()
+        val startedAt = System.currentTimeMillis()
+        val payload = StremioMapping.decodePayload(data) ?: run {
+            StremioDebug.w("[#$callId] loadLinks BAD payload data=${StremioDebug.clip(data, 300)}")
+            return false
+        }
 
-        val addonBases = StremioSettings.streamAddonUrls()
+        val rawAddonUrls = StremioSettings.streamAddonUrls()
+        val addonBases = rawAddonUrls
             .mapNotNull { StremioMapping.normalizeAddonUrl(it) }
             .distinct()
-        if (addonBases.isEmpty()) return false
+        StremioDebug.d(
+            "[#$callId] loadLinks START id=${payload.id} type=${payload.type} casting=$isCasting " +
+                "rawAddons=${rawAddonUrls.size} addons=${addonBases.size} " +
+                "hosts=${StremioDebug.join(addonBases.map { StremioDebug.host(it) })} data=$data"
+        )
+        if (addonBases.isEmpty()) {
+            StremioDebug.w("[#$callId] loadLinks NO ADDONS configured")
+            return false
+        }
 
         val type = payload.type.lowercase()
         val manifests = ConcurrentHashMap<String, StremioManifest>()
         val found = AtomicBoolean(false)
         val emitted = AtomicInteger(0)
-        val subtitleProbeHash = AtomicReference<String?>(null)
-        val subtitleProbeSize = AtomicReference<Long?>(null)
+        val subtitleCount = AtomicInteger(0)
+        val firstLinkMs = AtomicLong(-1L)
+        val probe = ProbeHints()
         val seenSubtitleUrls = ConcurrentHashMap.newKeySet<String>()
 
         // Fan out per addon. Each addon emits its links as soon as it responds so a slow
@@ -366,37 +382,88 @@ class StremioProvider : MainAPI() {
             val manifestDone = addonBases.associateWith { CompletableDeferred<Unit>() }
             val addonJobs = addonBases.map { base ->
                 launch {
+                    val host = hostOf(base)
+                    val addonStarted = System.currentTimeMillis()
                     var streamAnswered = false
                     try {
-                        val manifest = StremioApi.getManifest(base) ?: return@launch
+                        StremioDebug.d("[#$callId] addon[$host] manifest BEGIN")
+                        val manifest = StremioApi.getManifest(base)
+                        if (manifest == null) {
+                            StremioDebug.w("[#$callId] addon[$host] manifest NULL -> skip")
+                            return@launch
+                        }
                         manifests[base] = manifest
 
+                        val resourceNames = StremioMapping.manifestResourceNames(manifest)
+                        val streamTypes = StremioMapping.resourceTypesFor(manifest, "stream")
+                        val streamPrefixes = StremioMapping.resourceIdPrefixesFor(manifest, "stream")
+                        val idMatches = StremioMapping.idMatchesPrefixes(payload.id, streamPrefixes)
                         val supportsStream = StremioMapping.manifestSupportsResource(manifest, "stream") &&
-                            type in StremioMapping.resourceTypesFor(manifest, "stream").map { it.lowercase() } &&
-                            StremioMapping.idMatchesPrefixes(
-                                payload.id,
-                                StremioMapping.resourceIdPrefixesFor(manifest, "stream")
+                            type in streamTypes.map { it.lowercase() } &&
+                            idMatches
+                        StremioDebug.d(
+                            "[#$callId] addon[$host] manifest name=${manifest.name} " +
+                                "resources=${StremioDebug.join(resourceNames)} " +
+                                "streamTypes=${StremioDebug.join(streamTypes)} " +
+                                "streamPrefixes=${StremioDebug.join(streamPrefixes)} " +
+                                "idMatches=$idMatches supportsStream=$supportsStream"
+                        )
+                        if (!supportsStream) {
+                            StremioDebug.d(
+                                "[#$callId] addon[$host] STREAM SKIP (resource/type/prefix mismatch)"
                             )
-                        if (!supportsStream) return@launch
+                            return@launch
+                        }
 
-                        val addonName = manifest.name?.takeIf { it.isNotBlank() } ?: hostOf(base)
+                        val addonName = manifest.name?.takeIf { it.isNotBlank() } ?: host
+                        val streamsStarted = System.currentTimeMillis()
                         val streams = StremioApi.getStreams(base, type, payload.id)
+                        val embedded = StremioMapping.embeddedSubtitles(streams)
+                        StremioDebug.d(
+                            "[#$callId] addon[$host] streams=${streams.size} " +
+                                "embeddedSubs=${embedded.size} dur=${StremioDebug.ms(streamsStarted)}ms " +
+                                "breakdown=${streamBreakdown(streams)}"
+                        )
                         // Embedded subtitles travel on the stream itself; emit them as soon as
                         // this addon answers rather than after all addons settle, matching the
                         // streaming semantics of the links above.
-                        emitSubtitles(
-                            StremioMapping.embeddedSubtitles(streams),
+                        val embeddedEmitted = emitSubtitles(
+                            callId,
+                            "embedded:${addonName}",
+                            embedded,
                             seenSubtitleUrls,
                             subtitleCallback,
                         )
-                        for (candidate in candidatesFor(addonName, streams, subtitleProbeHash, subtitleProbeSize)) {
-                            if (emitted.incrementAndGet() > MAX_LINKS) break
+                        subtitleCount.addAndGet(embeddedEmitted)
+
+                        val candidates = candidatesFor(callId, addonName, streams, probe)
+                        StremioDebug.d(
+                            "[#$callId] addon[$host] candidates=${candidates.size} " +
+                                "skipped=${streams.size - candidates.size}"
+                        )
+                        val before = emitted.get()
+                        for (candidate in candidates) {
+                            val index = emitted.incrementAndGet()
+                            if (index > MAX_LINKS) {
+                                StremioDebug.w(
+                                    "[#$callId] MAX_LINKS ($MAX_LINKS) reached, dropping rest"
+                                )
+                                break
+                            }
+                            val kind = linkTypeFor(candidate)
+                            firstLinkMs.compareAndSet(-1L, StremioDebug.ms(startedAt))
+                            StremioDebug.d(
+                                "[#$callId] LINK #$index addon=$addonName kind=$kind " +
+                                    "torrent=${candidate.torrent} q=${candidate.quality} " +
+                                    "label=${StremioDebug.clip(candidate.label, 120)} " +
+                                    "url=${StremioDebug.clip(candidate.url, 240)}"
+                            )
                             callback.invoke(
                                 newExtractorLink(
                                     candidate.addonName,
                                     candidate.label,
                                     candidate.url,
-                                    linkTypeFor(candidate),
+                                    kind,
                                 ) {
                                     this.quality = candidate.quality
                                     this.referer = candidate.referer
@@ -405,10 +472,16 @@ class StremioProvider : MainAPI() {
                             )
                             found.set(true)
                         }
+                        StremioDebug.d(
+                            "[#$callId] addon[$host] DONE emitted=${emitted.get() - before} " +
+                                "addonDur=${StremioDebug.ms(addonStarted)}ms"
+                        )
                         streamAnswered = true
                     } catch (t: Throwable) {
                         if (t is CancellationException) throw t
-                        Log.e(TAG, "Addon $base failed: ${t.message}")
+                        StremioDebug.e(
+                            "[#$callId] addon[$host] FAIL ${t::class.java.simpleName}: ${t.message}"
+                        )
                     } finally {
                         manifestDone.getValue(base).complete(Unit)
                         if (streamAnswered) firstAddonDone.complete(Unit)
@@ -417,6 +490,7 @@ class StremioProvider : MainAPI() {
             }
             launch {
                 addonJobs.joinAll()
+                StremioDebug.d("[#$callId] all addon jobs settled")
                 firstAddonDone.complete(Unit)
             }
             launch {
@@ -425,33 +499,52 @@ class StremioProvider : MainAPI() {
                 // `manifests` snapshot below. Each signal is completed in the addon's `finally`,
                 // so an early return or failure still releases it.
                 manifestDone.values.forEach { it.await() }
-                emitSubtitleLinks(
+                val subs = emitSubtitleLinks(
+                    callId,
                     payload,
                     manifests,
-                    subtitleProbeHash.get(),
-                    subtitleProbeSize.get(),
+                    probe,
                     seenSubtitleUrls,
                     subtitleCallback,
                 )
+                subtitleCount.addAndGet(subs)
             }
         }
 
+        val totalMs = StremioDebug.ms(startedAt)
+        val firstLink = firstLinkMs.get()
+        StremioDebug.d(
+            "[#$callId] loadLinks END found=${found.get()} emitted=${emitted.get()} " +
+                "subs=${subtitleCount.get()} total=${totalMs}ms " +
+                "firstLink=${if (firstLink < 0) "none" else "${firstLink}ms"}"
+        )
+        if (!found.get()) {
+            StremioDebug.w("[#$callId] loadLinks NO LINKS total=${totalMs}ms")
+        }
         return found.get()
     }
 
     private fun candidatesFor(
+        callId: Int,
         addonName: String,
         streams: List<StremioStream>,
-        subtitleHash: AtomicReference<String?>,
-        subtitleSize: AtomicReference<Long?>,
+        probe: ProbeHints,
     ): List<LinkCandidate> {
         val candidates = ArrayList<LinkCandidate>(streams.size)
-        for (stream in streams) {
+        streams.forEachIndexed { index, stream ->
             // Debrid/direct addons carry a `url`; plain torrent addons only an `infoHash`.
             // The latter becomes a magnet, which Cloudstream's bundled torrent server plays.
             val playbackUrl = StremioMapping.playbackUrlFor(stream)
                 ?: StremioMapping.torrentUrlFor(stream)
-                ?: continue
+            if (playbackUrl == null) {
+                StremioDebug.d(
+                    "[#$callId] addon[$addonName] SKIP stream#$index " +
+                        "url=${StremioDebug.clip(stream.url, 160)} " +
+                        "infoHash=${StremioDebug.clip(stream.infoHash, 60)} " +
+                        "ytId=${StremioDebug.clip(stream.ytId, 40)} (no playable url)"
+                )
+                return@forEachIndexed
+            }
             val headers = StremioMapping.requestHeadersFor(stream)
             val qualityValue = StremioMapping.parseQuality(
                 stream.title, stream.name, stream.behaviorHints?.filename
@@ -474,33 +567,122 @@ class StremioProvider : MainAPI() {
                     torrent = StremioMapping.isTorrentUrl(playbackUrl),
                 )
             )
-            if (subtitleHash.get() == null || subtitleSize.get() == null) {
-                stream.behaviorHints?.videoHash?.takeIf { it.isNotBlank() }?.let {
-                    subtitleHash.compareAndSet(null, it)
-                }
-                stream.behaviorHints?.videoSize?.takeIf { it > 0 }?.let {
-                    subtitleSize.compareAndSet(null, it)
-                }
+
+            val hash = stream.behaviorHints?.videoHash?.takeIf { it.isNotBlank() }
+            val size = stream.behaviorHints?.videoSize?.takeIf { it > 0 }
+            if (probe.offer(hash, size, "$addonName#$index")) {
+                StremioDebug.d(
+                    "[#$callId] probe updated hash=${probe.videoHash} (${probe.hashSource}) " +
+                        "size=${probe.videoSize} (${probe.sizeSource})"
+                )
+            } else if (hash != null || size != null) {
+                StremioDebug.d(
+                    "[#$callId] probe ignored stream#$index hash=$hash size=$size " +
+                        "(already have ${probe.videoHash}/${probe.videoSize})"
+                )
             }
         }
         return candidates
     }
 
+    /**
+     * First non-empty `videoHash`/`videoSize` seen across all stream addons. Stremio's
+     * subtitle extra expects a matching pair, so both the values and where they came from
+     * are tracked and logged (the dev build uses this to diagnose subtitle 404s).
+     */
+    private class ProbeHints {
+        @Volatile var videoHash: String? = null
+            private set
+        @Volatile var videoSize: Long? = null
+            private set
+        @Volatile var hashSource: String? = null
+            private set
+        @Volatile var sizeSource: String? = null
+            private set
+
+        /** Returns true when a still-missing value was supplied by this call. */
+        @Synchronized
+        fun offer(hash: String?, size: Long?, source: String): Boolean {
+            var changed = false
+            if (hash != null && videoHash == null) {
+                videoHash = hash
+                hashSource = source
+                changed = true
+            }
+            if (size != null && videoSize == null) {
+                videoSize = size
+                sizeSource = source
+                changed = true
+            }
+            return changed
+        }
+    }
+
+    /** Counts how each addon's raw streams were classified, for the per-addon log line. */
+    private fun streamBreakdown(streams: List<StremioStream>): String {
+        var direct = 0
+        var youtube = 0
+        var magnet = 0
+        var badUrl = 0
+        var empty = 0
+        for (stream in streams) {
+            val playbackUrl = StremioMapping.playbackUrlFor(stream)
+            if (playbackUrl != null) {
+                if (playbackUrl.startsWith("https://www.youtube.com/", ignoreCase = true)) {
+                    youtube++
+                } else {
+                    direct++
+                }
+            } else if (!stream.infoHash.isNullOrBlank()) {
+                magnet++
+            } else if (!stream.url.isNullOrBlank()) {
+                badUrl++
+            } else {
+                empty++
+            }
+        }
+        return "direct=$direct yt=$youtube magnet=$magnet badUrl=$badUrl noUrl=$empty"
+    }
+
     private suspend fun emitSubtitleLinks(
+        callId: Int,
         payload: StremioPayload,
         manifests: Map<String, StremioManifest>,
-        videoHash: String?,
-        videoSize: Long?,
+        probe: ProbeHints,
         seen: MutableSet<String>,
         subtitleCallback: (SubtitleFile) -> Unit,
-    ) {
+    ): Int {
         val type = payload.type.lowercase()
-        val subtitleAddons = manifests.filter { (_, manifest) ->
-            StremioMapping.manifestSupportsResource(manifest, "subtitles") &&
-                type in StremioMapping.resourceTypesFor(manifest, "subtitles").map { it.lowercase() } &&
-                StremioMapping.idMatchesPrefixes(payload.id, StremioMapping.resourceIdPrefixesFor(manifest, "subtitles"))
+        StremioDebug.d(
+            "[#$callId] SUBS fanout BEGIN id=${payload.id} manifests=${manifests.size} " +
+                "probeHash=${probe.videoHash} (${probe.hashSource}) " +
+                "probeSize=${probe.videoSize} (${probe.sizeSource})"
+        )
+
+        val subtitleAddons = manifests.filter { (base, manifest) ->
+            val hasResource = StremioMapping.manifestSupportsResource(manifest, "subtitles")
+            val types = StremioMapping.resourceTypesFor(manifest, "subtitles")
+            val typeMatches = type in types.map { it.lowercase() }
+            val prefixes = StremioMapping.resourceIdPrefixesFor(manifest, "subtitles")
+            val idMatches = StremioMapping.idMatchesPrefixes(payload.id, prefixes)
+            val included = hasResource && typeMatches && idMatches
+            StremioDebug.d(
+                "[#$callId] SUBS check addon[${hostOf(base)}] resource=$hasResource " +
+                    "types=${StremioDebug.join(types)} typeMatches=$typeMatches " +
+                    "prefixes=${StremioDebug.join(prefixes)} idMatches=$idMatches included=$included"
+            )
+            included
         }
 
+        if (subtitleAddons.isEmpty()) {
+            StremioDebug.w("[#$callId] SUBS NO CAPABLE ADDONS")
+            return 0
+        }
+        StremioDebug.d(
+            "[#$callId] SUBS addons=${StremioDebug.join(subtitleAddons.keys.map { hostOf(it) })}"
+        )
+
+        val total = AtomicInteger(0)
         // Emit each addon's subtitles as soon as that addon answers, mirroring the stream
         // fan-out above. Batching with `awaitAll()` held fast addons' subtitles until the
         // slowest one returned (up to STREAM_TIMEOUT_MS). `seen` is a concurrent set and the
@@ -508,24 +690,62 @@ class StremioProvider : MainAPI() {
         coroutineScope {
             subtitleAddons.forEach { (base, _) ->
                 launch {
-                    val subtitles = StremioApi.getSubtitles(base, type, payload.id, videoHash, videoSize)
-                    emitSubtitles(subtitles, seen, subtitleCallback)
+                    val subtitles = StremioApi.getSubtitles(
+                        base, type, payload.id, probe.videoHash, probe.videoSize
+                    )
+                    val emitted = emitSubtitles(
+                        callId,
+                        "ext:${hostOf(base)}",
+                        subtitles,
+                        seen,
+                        subtitleCallback,
+                    )
+                    total.addAndGet(emitted)
                 }
             }
         }
+        StremioDebug.d("[#$callId] SUBS fanout END emitted=${total.get()}")
+        return total.get()
     }
 
-    /** Emits [subtitles], deduping by URL against the shared [seen] set. */
+    /** Emits [subtitles], deduping by URL against the shared [seen] set. Returns the count. */
     private suspend fun emitSubtitles(
+        callId: Int,
+        source: String,
         subtitles: List<StremioSubtitle>,
         seen: MutableSet<String>,
         subtitleCallback: (SubtitleFile) -> Unit,
-    ) {
+    ): Int {
+        var emitted = 0
+        var duplicates = 0
+        var dropped = 0
         for (subtitle in subtitles) {
-            val url = subtitle.url?.trim()?.takeIf { it.isNotEmpty() } ?: continue
-            if (!seen.add(url)) continue
-            subtitleCallback.invoke(newSubtitleFile(StremioMapping.subtitleLanguage(subtitle), url))
+            val url = subtitle.url?.trim()?.takeIf { it.isNotEmpty() }
+            if (url == null) {
+                dropped++
+                StremioDebug.d("[#$callId] SUB DROP src=$source lang=${subtitle.lang} (no url)")
+                continue
+            }
+            if (!seen.add(url)) {
+                duplicates++
+                StremioDebug.d("[#$callId] SUB DUP src=$source url=${StremioDebug.clip(url, 200)}")
+                continue
+            }
+            val language = StremioMapping.subtitleLanguage(subtitle)
+            StremioDebug.d(
+                "[#$callId] SUB EMIT src=$source lang=$language id=${subtitle.id} " +
+                    "url=${StremioDebug.clip(url, 240)}"
+            )
+            subtitleCallback.invoke(newSubtitleFile(language, url))
+            emitted++
         }
+        if (subtitles.isNotEmpty() || dropped > 0) {
+            StremioDebug.d(
+                "[#$callId] SUB src=$source raw=${subtitles.size} emitted=$emitted " +
+                    "dup=$duplicates dropped=$dropped"
+            )
+        }
+        return emitted
     }
 
     /**
