@@ -1,0 +1,23 @@
+[
+    {
+        "iconUrl": "https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/StreamioLink/icon.png",
+        "fileHash": "sha256-7024a05e66dddbd9a5f6d7d428903c3d910ccc28e968d8846bc9c0c758ce9cc0",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Ashishsri2018/stremio-cloudstream",
+        "fileSize": 95532,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Ashishsri2018"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 103,
+        "internalName": "StreamioLinkDev",
+        "description": "[DEV] Experimental StreamioLink build for testing. Installs as a separate provider; the stable plugin is unaffected.",
+        "url": "https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/builds-dev/StreamioLinkDev.cs3",
+        "name": "StreamioLinkDev"
+    }
+]
