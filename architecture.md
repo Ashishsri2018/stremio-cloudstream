@@ -25,23 +25,37 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 - `StremioSettingsDialog` — programmatic (no XML resources) settings UI.
 
 ## Data Flow
-1. Home: catalog addon manifest → catalogs without required extras → `/catalog/{type}/{id}.json` → rows.
+1. Home: catalog addon manifest → loadable catalogs → `/catalog/{type}/{id}.json` → rows.
+   A catalog is loadable when its type is `movie`, `series`, `anime`, `anime.movie` or
+   `anime.series` and every required extra can be satisfied from the manifest itself
+   (`StremioMapping.catalogPresetExtra`: its `default`, else the first `options` entry).
+   `search`/`similar`/`calendarVideosIds` therefore stay off the home page. The resolved preset is
+   sent as a path extra (`genre=Fall%202026`), so genre-locked catalogs (TMDB By Year, By Language,
+   TVDB Genres, MAL Seasons/Studios) still get rows fixed to that one value; `showInHome:false`
+   catalogs are surfaced too because CloudStream has no Discover/genre picker. Titles come from
+   `StremioMapping.catalogTitles`, which appends `(Movies)`/`(Series)` when a name is shared —
+   CloudStream keys home rows by title (`HomeViewModel.expandable[list.name]`), so identical
+   movie/series names would otherwise collapse and leave only the later (series) row.
    `mainPage` exposes one tab per catalog (encoded via `StremioMapping.encodeCatalogRef`); the
    initial load returns every catalog at once. Catalogs advertising `skip`
    (`catalogSupportsSkip`) paginate: CloudStream expands a row by requesting a single catalog
-   (`request.data` holds the ref) and the next page is fetched with `skip=<offset>`, where the
-   offset advances by the number of items the addon actually returned (`catalogOffsets`).
+   (`request.data` holds the ref) and the next page is fetched with `genre=<preset>&skip=<offset>`
+   (`StremioMapping.catalogExtra`), where the offset advances by the number of items the addon
+   actually returned (`catalogOffsets`).
    Rows are fetched with **bounded concurrency** (`MAX_CONCURRENT_CATALOGS = 6`, a `Semaphore`):
    a catalog addon can advertise dozens of rows (Nuvio: 27 loadable catalogs) and firing them all
    at once opened as many sockets. `getMainPageTimeoutMs = 90 s` / `searchTimeoutMs = 60 s` cap a
    stuck catalog. (Lazy row loading is **not** possible: CloudStream's `HomeViewModel.load()` calls
    `getMainPage(1, null)` once and renders every returned row; expansion only paginates existing rows.)
-2. Search: search-capable catalogs → `/catalog/{type}/{id}/search=...json` (falls back to meta addon).
+2. Search: search-capable catalogs (including `anime.series`/`anime.movie`) →
+   `/catalog/{type}/{id}/search=...json`, keeping any preset genre extra (falls back to meta addon).
    Quick search is **not** implemented: `hasQuickSearch` is left at its default `false`, so the
    single-provider quick-search screen (reached from the home search icon) searches on submit via the
    normal `search()` path instead of on every keystroke. Advertising it without overriding
    `quickSearch` would call CloudStream's default, which throws `NotImplementedError`.
 3. Load: `/meta/{type}/{id}.json` (catalog addon, then fallback) → movie page or episode list.
+   The response shape follows `meta.type` (falling back to the payload type), so an `anime` catalog
+   item that resolves to a series keeps its episode list and its episode links use the series type.
 4. Links: all source addons declared `stream` resource and matching type/idPrefixes are queried
    in parallel **per addon** (`supervisorScope`, so one addon's failure cannot cancel the others) —
    each addon emits its `ExtractorLink`s as soon as it responds, so a slow addon never delays the

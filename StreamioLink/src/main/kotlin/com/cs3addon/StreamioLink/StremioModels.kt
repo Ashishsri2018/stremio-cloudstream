@@ -41,6 +41,8 @@ data class StremioExtra(
     @JsonProperty("name") val name: String? = null,
     @JsonProperty("isRequired") val isRequired: Boolean? = null,
     @JsonProperty("options") val options: List<String>? = null,
+    /** Provider-chosen value for a required extra (e.g. TMDB By Year's current year). */
+    @JsonProperty("default") val defaultValue: String? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

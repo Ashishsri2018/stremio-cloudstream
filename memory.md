@@ -437,5 +437,25 @@
   the plain URL; v15's `[with-extra, plain]` fallback covers it. Whether the reported missing
   cnc Hindi sub is v15 or a separate issue needs a device logcat capture. Bumped 15 → 16.
 
+## 2026-10-23 — AIOMetadata: duplicate row titles hid movies; anime/genre catalogs dropped — version 17
+- Report: AIOMetadata catalog (`aiometadata.elfhosted.com/stremio/<config>/manifest.json`) showed
+  only series rows and "not all categories".
+- Root cause 1 (movies): the manifest reuses the same `name` for the movie and series variant of
+  `tmdb.top`, `tmdb.trending`, `lumiere.*` etc. CloudStream stores home rows in a map keyed by
+  title (`HomeViewModel.expandable[list.name]`), so each later series row overwrote the movie row.
+- Root cause 2 (missing rows): `SUPPORTED_MEDIA_TYPES` was `{movie, series}` (dropped all 18 MAL
+  anime catalogs and anime search), and `catalogCanLoadHome` dropped every catalog with a required
+  extra (14 here: TMDB By Year/Language, TVDB, MAL Genres/Schedule/Seasons/Studios), even though
+  the manifest supplies a `default`/`options` value.
+- Fix: `catalogTitles` appends `(Movies)`/`(Series)` only for duplicate names (tabs and rows share
+  the same titles); `catalogPresetExtra` resolves required extras from `default` or the first
+  option and is sent as `genre=…`, combined with `skip` (and `search`) by `catalogExtra`; anime
+  catalog types are loadable and `isSeriesType`/`meta.type` drive the load response so anime
+  series keep episodes. `showInHome:false` catalogs are surfaced deliberately (no Discover/genre
+  picker in CloudStream), while un-satisfiable extras (`search`, `similar`, `calendarVideosIds`)
+  stay excluded. Also fixed the `catalogTabs`/`catalogTabsBase` publish order (tabs first).
+- Unit tests: preset extras, preset+skip/search joining, title disambiguation, anime types,
+  series-type detection. Bumped 16 → 17.
+
 
 

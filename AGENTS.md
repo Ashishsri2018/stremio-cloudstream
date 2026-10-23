@@ -7,6 +7,8 @@ Canonical repo: `Ashishsri2018/stremio-cloudstream` (CI publishes builds there).
 ## Environment (verified — do not re-check every run)
 
 - **No `gradle`/`./gradlew` execution possible here**: no Android SDK, no `local.properties`/`ANDROID_HOME`. Do not try `./gradlew ...`; it fails at configuration. Never spend turns probing for it.
+- **Never compile/test locally (on-device)**: do not download or install `kotlinc`, JDK toolchains, or ad-hoc jars in this container. GitHub Actions is the only build/test runner — commit + push, then `gh run watch <run-id> --exit-status` and inspect failures with `gh run view <run-id> --log-failed`.
+- **Optional cached checker** (already installed system-wide, do not re-download): `kotlinc` (2.4.21) is on `PATH`, and `streamiolink-tests` ([script](/root/iptv/.toolchain/kotlin-jvm/run-tests.sh)) compiles `StremioMapping`/`StremioModels` + the JVM tests and runs JUnit offline. Convenience only — CI remains the source of truth.
 - **`git` and `gh` ARE installed and authenticated** as `Ashishsri2018` (git user/email set, `gh auth status` logged in, HTTPS push works). Commit/push and watch CI with `gh run watch <id> --exit-status` directly — no need to verify auth first.
 - CI (`.github/workflows/build.yml`) is the only real build; it runs on push to `main` and publishes to the `builds` branch.
 

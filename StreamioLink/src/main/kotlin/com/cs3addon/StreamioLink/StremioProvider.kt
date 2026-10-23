@@ -120,21 +120,28 @@ class StremioProvider : MainAPI() {
 
         if (catalogTabsBase != catalogBase) {
             catalogOffsets.clear()
-            catalogTabsBase = catalogBase
         }
-        catalogTabs = catalogs.mapNotNull { catalog ->
+        val addonName = manifest.name?.takeIf { it.isNotBlank() } ?: name
+        // Titles are computed once and reused for both the tabs and the rows. Identical names
+        // across media types get a "(Movies)/(Series)" suffix; without it Cloudstream's
+        // name-keyed row map drops the earlier (movie) row in favour of the later series one.
+        val titled = StremioMapping.catalogTitles(catalogs, addonName)
+        catalogTabs = titled.mapNotNull { (catalog, title) ->
             val type = catalog.type ?: return@mapNotNull null
             val id = catalog.id ?: return@mapNotNull null
             MainPageData(
-                name = catalogTitle(manifest, catalog, name),
+                name = title,
                 data = StremioMapping.encodeCatalogRef(type, id),
                 horizontalImages = false,
             )
         }
+        // Publish the tabs before the base so a concurrent [mainPage] read never pairs the new
+        // base with the previous addon's tabs.
+        catalogTabsBase = catalogBase
 
         val rows = coroutineScope {
-            catalogs.map { catalog ->
-                async { catalogSemaphore.withPermit { fetchCatalogRow(catalogBase, manifest, catalog, page) } }
+            titled.map { (catalog, title) ->
+                async { catalogSemaphore.withPermit { fetchCatalogRow(catalogBase, catalog, page, title) } }
             }.awaitAll().filterNotNull()
         }
         val hasNext = catalogs.any { StremioMapping.catalogSupportsSkip(it) }
@@ -158,8 +165,12 @@ class StremioProvider : MainAPI() {
 
         // page 1 is a fresh (re)load, restart from the top; later pages continue the offset.
         val offset = if (page <= 1) 0 else (catalogOffsets[key] ?: ((page - 1) * DEFAULT_PAGE_SIZE))
+        val extra = StremioMapping.catalogExtra(
+            catalog?.let { StremioMapping.catalogPresetExtra(it) },
+            if (skipSupported) offset else null,
+        )
         val items = try {
-            StremioApi.getCatalog(catalogBase, ref.type, ref.id, if (offset > 0) "skip=$offset" else null)
+            StremioApi.getCatalog(catalogBase, ref.type, ref.id, extra)
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
@@ -171,24 +182,26 @@ class StremioProvider : MainAPI() {
 
         val searches = items.mapNotNull { toSearchResponse(it, ref.type) }
         if (searches.isEmpty()) return newHomePageResponse(emptyList(), false)
+        val addonName = manifest?.name?.takeIf { it.isNotBlank() } ?: name
         val title = requestName.takeIf { it.isNotBlank() }
-            ?: (manifest?.let { catalog?.let { c -> catalogTitle(it, c, name) } })
+            ?: (catalog?.let { StremioMapping.catalogBaseTitle(it, addonName) })
             ?: ref.id
         return newHomePageResponse(listOf(HomePageList(title, searches)), skipSupported)
     }
 
     private suspend fun fetchCatalogRow(
         catalogBase: String,
-        manifest: StremioManifest,
         catalog: StremioCatalog,
         page: Int,
+        title: String,
     ): HomePageList? {
         val type = catalog.type ?: return null
         val id = catalog.id ?: return null
         val key = StremioMapping.encodeCatalogRef(type, id)
         val offset = if (page > 1) (catalogOffsets[key] ?: ((page - 1) * DEFAULT_PAGE_SIZE)) else 0
+        val extra = StremioMapping.catalogExtra(StremioMapping.catalogPresetExtra(catalog), offset)
         val items = try {
-            StremioApi.getCatalog(catalogBase, type, id, if (offset > 0) "skip=$offset" else null)
+            StremioApi.getCatalog(catalogBase, type, id, extra)
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
@@ -198,14 +211,7 @@ class StremioProvider : MainAPI() {
         if (StremioMapping.catalogSupportsSkip(catalog)) catalogOffsets[key] = offset + items.size
         val searches = items.mapNotNull { toSearchResponse(it, type) }
         if (searches.isEmpty()) return null
-        return HomePageList(catalogTitle(manifest, catalog, name), searches)
-    }
-
-    private fun catalogTitle(manifest: StremioManifest, catalog: StremioCatalog, providerName: String): String {
-        catalog.name?.takeIf { it.isNotBlank() }?.let { return it }
-        val addon = manifest.name?.takeIf { it.isNotBlank() } ?: providerName
-        val type = catalog.type.orEmpty().replaceFirstChar { it.uppercase() }
-        return "$addon $type".trim()
+        return HomePageList(title, searches)
     }
 
     private fun toSearchResponse(meta: StremioMetaPreview, fallbackType: String): SearchResponse? {
@@ -213,7 +219,7 @@ class StremioProvider : MainAPI() {
         val type = meta.type ?: fallbackType
         val payload = StremioMapping.encodePayload(id, type)
         val title = meta.name?.takeIf { it.isNotBlank() } ?: id
-        return if (type.equals("series", ignoreCase = true)) {
+        return if (StremioMapping.isSeriesType(type)) {
             newTvSeriesSearchResponse(title, payload) {
                 this.posterUrl = meta.poster
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
@@ -254,7 +260,11 @@ class StremioProvider : MainAPI() {
                     val id = catalog.id ?: return@async emptyList()
                     try {
                         catalogSemaphore.withPermit {
-                            StremioApi.getCatalog(base, type, id, "search=$encodedQuery")
+                            val extra = StremioMapping.catalogExtra(
+                                StremioMapping.catalogPresetExtra(catalog),
+                                search = encodedQuery,
+                            )
+                            StremioApi.getCatalog(base, type, id, extra)
                                 .mapNotNull { toSearchResponse(it, type) }
                         }
                     } catch (t: CancellationException) {
@@ -274,9 +284,13 @@ class StremioProvider : MainAPI() {
         val payload = StremioMapping.decodePayload(url) ?: return null
         val meta = fetchMeta(payload) ?: return null
         val title = meta.name?.takeIf { it.isNotBlank() } ?: payload.id
+        // Catalog types such as `anime` (or items without a type) only reveal whether they hold
+        // episodes once the meta response is in; trust meta.type for the response shape and for
+        // the episode payloads, so series are not loaded as movies.
+        val type = meta.type?.takeIf { it.isNotBlank() } ?: payload.type
 
-        return if (payload.type.equals("series", ignoreCase = true)) {
-            val episodes = meta.videos.orEmpty().mapNotNull { toEpisode(payload.type, it) }
+        return if (StremioMapping.isSeriesType(type)) {
+            val episodes = meta.videos.orEmpty().mapNotNull { toEpisode(type, it) }
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = meta.poster
                 this.backgroundPosterUrl = meta.background

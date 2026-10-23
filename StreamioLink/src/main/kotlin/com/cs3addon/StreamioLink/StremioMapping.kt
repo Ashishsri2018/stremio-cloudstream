@@ -12,7 +12,12 @@ object StremioMapping {
 
     val mapper = jacksonObjectMapper()
 
-    val SUPPORTED_MEDIA_TYPES = setOf("movie", "series")
+    /**
+     * Catalog types that can be mapped onto Cloudstream. `anime` catalogs carry the same
+     * movie/series metas as the others (their items declare `type`), so they are loadable too;
+     * excluding them dropped whole rows from addons such as AIOMetadata.
+     */
+    val SUPPORTED_MEDIA_TYPES = setOf("movie", "series", "anime", "anime.movie", "anime.series")
 
     /**
      * Stremio CDNs (e.g. the `hakunaymatata.com` hosts behind MovieBox/VidLink) return
@@ -157,15 +162,62 @@ object StremioMapping {
     // ---------------------------------------------------------------- catalogs
 
     fun catalogCanLoadHome(catalog: StremioCatalog): Boolean {
-        if (!SUPPORTED_MEDIA_TYPES.contains(catalog.type?.lowercase())) return false
+        if (!isSupportedMediaType(catalog.type)) return false
         if (catalog.id.isNullOrBlank()) return false
-        if (catalog.extra.orEmpty().any { it.isRequired == true }) return false
-        if (!catalog.extraRequired.isNullOrEmpty()) return false
-        return true
+        // Search/similar/calendar catalogs need a caller-supplied value we cannot invent.
+        // Genre-like required extras are resolved from the manifest's default or first option.
+        return catalogPresetExtra(catalog) != null
+    }
+
+    fun isSupportedMediaType(type: String?): Boolean =
+        SUPPORTED_MEDIA_TYPES.contains(type?.trim()?.lowercase())
+
+    /** True for media types whose metadata carries episodes. */
+    fun isSeriesType(type: String?): Boolean = when (type?.trim()?.lowercase()) {
+        "series", "anime.series", "tv", "tvseries" -> true
+        else -> false
+    }
+
+    /**
+     * Value for the catalog's required extras, as a protocol path extra (`genre=Fall%202026`).
+     * Cloudstream's home screen has no genre picker, so a required extra can only be satisfied
+     * from the manifest itself: its `default`, or the first `options` entry. Returns null when a
+     * required extra cannot be resolved (e.g. `search`, `similar`, `calendarVideosIds`), and the
+     * empty string when the catalog has no required extras.
+     */
+    fun catalogPresetExtra(catalog: StremioCatalog): String? {
+        val requiredNames = LinkedHashSet<String>()
+        catalog.extra.orEmpty()
+            .filter { it.isRequired == true }
+            .forEach { extra -> extra.name?.takeIf { it.isNotBlank() }?.let { requiredNames.add(it) } }
+        catalog.extraRequired.orEmpty()
+            .filter { it.isNotBlank() }
+            .forEach { requiredNames.add(it) }
+        if (requiredNames.isEmpty()) return ""
+
+        val values = LinkedHashMap<String, String>()
+        for (name in requiredNames) {
+            val extra = catalog.extra.orEmpty().firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?: return null
+            val value = extra.defaultValue?.trim()?.takeIf { it.isNotEmpty() }
+                ?: extra.options.orEmpty().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return null
+            values[name] = value
+        }
+        return values.entries.joinToString("&") { (name, value) -> "$name=${encodeQueryValue(value)}" }
+    }
+
+    /** Joins a catalog's preset extras with `search`/`skip`, keeping all of them in one path extra. */
+    fun catalogExtra(preset: String?, skip: Int? = null, search: String? = null): String? {
+        val parts = ArrayList<String>(3)
+        preset?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+        search?.takeIf { it.isNotBlank() }?.let { parts.add("search=$it") }
+        skip?.takeIf { it > 0 }?.let { parts.add("skip=$it") }
+        return parts.takeIf { it.isNotEmpty() }?.joinToString("&")
     }
 
     fun catalogSupportsSearch(catalog: StremioCatalog): Boolean {
-        if (!SUPPORTED_MEDIA_TYPES.contains(catalog.type?.lowercase())) return false
+        if (!isSupportedMediaType(catalog.type)) return false
         if (catalog.id.isNullOrBlank()) return false
         val names = mutableSetOf<String>()
         catalog.extra.orEmpty().forEach { it.name?.let { n -> names.add(n.lowercase()) } }
@@ -177,6 +229,43 @@ object StremioMapping {
     fun catalogSupportsSkip(catalog: StremioCatalog): Boolean {
         if (catalog.extra.orEmpty().any { it.name?.equals("skip", ignoreCase = true) == true }) return true
         return catalog.extraSupported.orEmpty().any { it.equals("skip", ignoreCase = true) }
+    }
+
+    /**
+     * Row/tab titles for [catalogs], disambiguated by media type when a name is shared.
+     *
+     * Cloudstream stores home rows in a map keyed by title (`HomeViewModel.expandable[list.name]`),
+     * so two catalogs called "TMDB Popular" (movie + series) collapse into one and the later row
+     * silently replaces the earlier one. Adding "(Movies)/(Series)" keeps both rows and keeps the
+     * tab/row names in sync (expansion looks tabs up by name).
+     */
+    fun catalogTitles(catalogs: List<StremioCatalog>, addonName: String): List<Pair<StremioCatalog, String>> {
+        val baseTitles = catalogs.map { catalogBaseTitle(it, addonName) }
+        val duplicated = baseTitles.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        val used = HashMap<String, Int>()
+        return catalogs.mapIndexed { index, catalog ->
+            var title = baseTitles[index]
+            if (title in duplicated) title = "$title (${mediaTypeLabel(catalog.type)})"
+            val seen = (used[title] ?: 0) + 1
+            used[title] = seen
+            if (seen > 1) title = "$title $seen"
+            catalog to title
+        }
+    }
+
+    fun catalogBaseTitle(catalog: StremioCatalog, addonName: String): String {
+        catalog.name?.takeIf { it.isNotBlank() }?.let { return it }
+        val type = catalog.type.orEmpty().replaceFirstChar { it.uppercase() }
+        return "$addonName $type".trim()
+    }
+
+    private fun mediaTypeLabel(type: String?): String = when (type?.trim()?.lowercase()) {
+        "movie" -> "Movies"
+        "series" -> "Series"
+        "anime" -> "Anime"
+        "anime.movie" -> "Anime Movies"
+        "anime.series" -> "Anime Series"
+        else -> type.orEmpty().replaceFirstChar { it.uppercase() }.ifBlank { "Other" }
     }
 
     // ---------------------------------------------------------------- url building
