@@ -26,8 +26,32 @@
     },
     {
       "name": "playvio",
-      "url": "https://plaviohd.vercel.app/c/eyJzb3VyY2VzIjpbIkhESHViIiwiTW92aWVCb3giLCI5eGZsaXgiLCJWaWR5IiwiQ2luZXpvIiwiVmlkemVlIiwiVmVnYW1vdmllcyIsIlZpeFNyYyIsIkxpdmVUViJdLCJxIjpbIjcyMHAiLCI0ODBwIl0sImxhbmciOlsiRW5nbGlzaCIsIkhpbmRpIiwiQXJhYmljIiwiU3BhbmlzaCIsIkZyZW5jaCJdLCJjYXQiOlsiSG9sbHl3b29kIiwiQm9sbHl3b29kIiwiQW5pbWUiLCJLb3JlYW4iLCJDaGluZXNlIiwiVHVya2lzaCJdLCJ0dnJlZ2lvbiI6WyJVUyIsIlVLIiwiQ0EiLCJBVSIsIk5aIl0sInNvcnQiOiJhc2MiLCJzcmNPcmRlciI6WyJIREh1YiIsIk1vdmllQm94IiwiOXhmbGl4IiwiVmlkeSIsIkNpbmV6byIsIlZpZHplZSIsIlZlZ2Ftb3ZpZXMiLCJWaXhTcmMiLCJMaXZlVFYiXSwiaGVhbHRoY2hlY2siOnRydWV9/manifest.json",
+      "url": "https://plaviohd.vercel.app/c/eyJzb3VyY2VzIjpbIkhESHViIiwiTW92aWVCb3giLCJDaW5lem8iLCJWaWRsaW5rIiwiVmlkemVlIiwiQ2FzdGxlVFYiLCJWZWdhbW92aWVzIiwiVmlkeSIsIkNsb3VkeSIsIlZpZENvcmUiLCJCaW5nciIsIk1vdmllczR1IiwiRGVzaUZsaXgiLCJFaW50aHVzYW4iLCJTcGFjZURvbSIsIkxpdmVUViJdLCJxIjpbIjcyMHAiLCI0ODBwIl0sImxhbmciOlsiRW5nbGlzaCIsIkhpbmRpIiwiQXJhYmljIiwiU3BhbmlzaCIsIkZyZW5jaCJdLCJjYXQiOlsiSG9sbHl3b29kIiwiQm9sbHl3b29kIiwiQW5pbWUiLCJLb3JlYW4iLCJDaGluZXNlIiwiVHVya2lzaCJdLCJ0dnJlZ2lvbiI6WyJVUyIsIlVLIiwiQ0EiLCJBVSIsIk5aIl0sInNvcnRNb2RlIjoicXVhbGl0eSIsInRpdGxlX2Zvcm1hdCI6ImRlZmF1bHQifQ/manifest.json",
       "home": "https://plaviohd.vercel.app/configure",
+      "notes": "another http sources addon"
+    },
+    {
+      "name": "111577",
+      "url": "https://st.111477.xyz/config/aHR0cHM6Ly9hLjExMTQ3Ny54eXovOjpzb3J0PWZpbGUtYXNjOjp0bWRiPTZiNjQ4ZjJlNzBmNmU5MTQ1OGM3NWJiM2RhYzIxYTA5OjpxdWFsaXR5PTcyMA/manifest.json",
+      "home": "https://st.111477.xyz/",
+      "notes": "another http sources addon"
+    },
+    {
+      "name": "Eclipcia",
+      "url": "https://dffe107ae186-eclipsia-docker.baby-beamup.club/c/eyJzb3J0QnkiOiJyZXNfYXNjIiwiZXhjbHVkZVJlcyI6WyIyMTYwcCIsIjE0NDBwIiwiMTA4MHAiXSwibm9Qcm94eVByb3ZpZGVycyI6WyJoZXhpb24iLCJrYXJuaXMiLCJub3Z1cyIsImR1cm5lbCIsIndhZWx1bSIsInF5cnZhZW4iLCJ6ZXZyYW4iLCJmZW5kcml4Iiwic29sdW5peCIsInFvcnZhIiwibnl4b3JhIl19/manifest.json",
+      "home": "https://dffe107ae186-eclipsia-docker.baby-beamup.club/configure",
+      "notes": "another http sources addon"
+    },
+    {
+      "name": "Yuki",
+      "url": "https://stremio.yukistreams.xyz/p.n1j1m1lexC-z07XQ/",
+      "home": "https://stremio.yukistreams.xyz/configure",
+      "notes": "another http sources addon"
+    },
+    {
+      "name": "sootio",
+      "url": "https://sooti.info/%7B%22DebridServices%22%3A%5B%7B%22provider%22%3A%22httpstreaming%22%2C%22http4khdhub%22%3Atrue%2C%22httpHDHub4u%22%3Atrue%2C%22httpUHDMovies%22%3Atrue%2C%22httpMoviesDrive%22%3Atrue%2C%22httpMKVCinemas%22%3Atrue%2C%22httpMalluMv%22%3Atrue%2C%22httpCineDoze%22%3Atrue%2C%22httpVixSrc%22%3Atrue%2C%22httpMoviesMod%22%3Atrue%2C%22httpMoviesLeech%22%3Atrue%2C%22httpAnimeFlix%22%3Atrue%2C%22http111477%22%3Atrue%2C%22httpXDMovies%22%3Atrue%2C%22httpPixeldrain%22%3Atrue%2C%22httpMkvBase%22%3Atrue%2C%22httpVadapav%22%3Atrue%2C%22httpInternetArchive%22%3Atrue%2C%22enableProxy%22%3Afalse%2C%22proxyUrl%22%3A%22%22%2C%22proxyPassword%22%3A%22%22%7D%5D%2C%22Languages%22%3A%5B%22english%22%2C%22hindi%22%5D%2C%22Resolutions%22%3A%5B%22720p%22%2C%22480p%22%5D%2C%22Scrapers%22%3A%5B%221337x%22%2C%22knaben%22%2C%22torrents-csv%22%2C%22rarbg%22%2C%22extto%22%2C%22limetorrents%22%5D%2C%22IndexerScrapers%22%3A%5B%22stremthru%22%5D%2C%22ScrapersConfigured%22%3Atrue%2C%22minSize%22%3A0%2C%22maxSize%22%3A86%2C%22ShowCatalog%22%3Afalse%2C%22ProxyApplyAll%22%3Afalse%2C%22DebridProvider%22%3A%22httpstreaming%22%7D/manifest.json",
+      "home": "https://st.111477.xyz/",
       "notes": "another http sources addon"
     },
     {
