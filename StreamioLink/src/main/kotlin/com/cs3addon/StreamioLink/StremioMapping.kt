@@ -45,20 +45,122 @@ object StremioMapping {
     /** Cap on how many language tags are shown for one stream, keeping the label compact. */
     private const val MAX_LANGUAGE_TAGS = 3
 
-    private val languageTokenRegex = Regex("""[A-Za-z]+""")
+    private val languageTokenRegex = Regex("""\p{IsLatin}+""")
     private val dualAudioRegex = Regex("""dual[\s\-_.]*audio""", RegexOption.IGNORE_CASE)
 
     /**
-     * Languages surfaced on the link label. Deliberately tiny — only the languages this setup
-     * actually uses — so detection stays cheap. Stremio streams carry no language field, so this
-     * is text-mined from `name`/`title`/`description`/`filename`. "Dual audio" is reported as
-     * `Multi`.
+     * Languages surfaced on the link label. Stremio streams carry no language field, so this is
+     * text-mined from `name`/`title`/`description`/`filename`. Covers the languages commonly used
+     * by movie/series/anime addons as full English names plus unambiguous scene/ISO codes.
+     * Ambiguous codes that double as ordinary words or names (`ben`, `mar`, `per`, `may`, `dan`,
+     * `fin`, `nor`, `pol`, `rom`, `ron`, `ara`, `pan`, `hun`, `ind`, `gre`, `sin`) are omitted.
+     * "Dual audio" is reported as `Multi`.
      */
     private val languageAliases: Map<String, String> = mapOf(
         "english" to "English",
         "eng" to "English",
         "hindi" to "Hindi",
         "hin" to "Hindi",
+        "tamil" to "Tamil",
+        "tam" to "Tamil",
+        "telugu" to "Telugu",
+        "tel" to "Telugu",
+        "malayalam" to "Malayalam",
+        "mal" to "Malayalam",
+        "kannada" to "Kannada",
+        "kan" to "Kannada",
+        "bengali" to "Bengali",
+        "bangla" to "Bengali",
+        "marathi" to "Marathi",
+        "punjabi" to "Punjabi",
+        "panjabi" to "Punjabi",
+        "gujarati" to "Gujarati",
+        "guj" to "Gujarati",
+        "urdu" to "Urdu",
+        "urd" to "Urdu",
+        "spanish" to "Spanish",
+        "espanol" to "Spanish",
+        "español" to "Spanish",
+        "esp" to "Spanish",
+        "spa" to "Spanish",
+        "french" to "French",
+        "francais" to "French",
+        "français" to "French",
+        "fra" to "French",
+        "fre" to "French",
+        "german" to "German",
+        "deutsch" to "German",
+        "deu" to "German",
+        "ger" to "German",
+        "italian" to "Italian",
+        "italiano" to "Italian",
+        "ita" to "Italian",
+        "portuguese" to "Portuguese",
+        "portugues" to "Portuguese",
+        "português" to "Portuguese",
+        "por" to "Portuguese",
+        "russian" to "Russian",
+        "rus" to "Russian",
+        "japanese" to "Japanese",
+        "jpn" to "Japanese",
+        "korean" to "Korean",
+        "kor" to "Korean",
+        "chinese" to "Chinese",
+        "mandarin" to "Chinese",
+        "cantonese" to "Chinese",
+        "zho" to "Chinese",
+        "arabic" to "Arabic",
+        "arb" to "Arabic",
+        "turkish" to "Turkish",
+        "turkce" to "Turkish",
+        "türkçe" to "Turkish",
+        "tur" to "Turkish",
+        "thai" to "Thai",
+        "tha" to "Thai",
+        "indonesian" to "Indonesian",
+        "indonesia" to "Indonesian",
+        "vietnamese" to "Vietnamese",
+        "vie" to "Vietnamese",
+        "polish" to "Polish",
+        "polski" to "Polish",
+        "dutch" to "Dutch",
+        "nederlands" to "Dutch",
+        "nld" to "Dutch",
+        "dut" to "Dutch",
+        "swedish" to "Swedish",
+        "svenska" to "Swedish",
+        "swe" to "Swedish",
+        "danish" to "Danish",
+        "dansk" to "Danish",
+        "norwegian" to "Norwegian",
+        "norsk" to "Norwegian",
+        "finnish" to "Finnish",
+        "suomi" to "Finnish",
+        "greek" to "Greek",
+        "ell" to "Greek",
+        "czech" to "Czech",
+        "cestina" to "Czech",
+        "čeština" to "Czech",
+        "ces" to "Czech",
+        "cze" to "Czech",
+        "hungarian" to "Hungarian",
+        "magyar" to "Hungarian",
+        "romanian" to "Romanian",
+        "romana" to "Romanian",
+        "română" to "Romanian",
+        "ukrainian" to "Ukrainian",
+        "ukr" to "Ukrainian",
+        "hebrew" to "Hebrew",
+        "heb" to "Hebrew",
+        "persian" to "Persian",
+        "farsi" to "Persian",
+        "fas" to "Persian",
+        "filipino" to "Filipino",
+        "tagalog" to "Filipino",
+        "fil" to "Filipino",
+        "malay" to "Malay",
+        "melayu" to "Malay",
+        "msa" to "Malay",
         "multi" to "Multi",
     )
 
@@ -498,8 +600,8 @@ object StremioMapping {
      * The Stremio stream object has no language field, so the addons write it into free text:
      * `description` (HdHub: `...Hindi.English...`; PenguPlay: `🎧 Audio: English, Hindi`),
      * `title` (PlavioHD: `480p · Hindi, English`) or `behaviorHints.filename`
-     * (`...Rus.Eng.mkv`). Detected names are canonicalized, deduped (case-insensitively) and
-     * capped at [MAX_LANGUAGE_TAGS]. "Dual audio" is reported as `Multi`.
+     * (`...Rus.Eng.mkv`). Detected names/codes are canonicalized, deduped (case-insensitively)
+     * and capped at [MAX_LANGUAGE_TAGS]. "Dual audio" is reported as `Multi`.
      */
     fun streamLanguages(stream: StremioStream): List<String> {
         val haystack = listOfNotNull(

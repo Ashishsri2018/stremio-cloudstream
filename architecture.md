@@ -105,8 +105,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    Each link's visible name is the addon's `name`/`title`/filename (`StremioMapping.streamDisplayName`).
    CloudStream's `ExtractorLink` has no language field, so audio languages text-mined from the addon
    payload (`name`/`title`/`description`/`behaviorHints.filename`, via `StremioMapping.streamLanguages`)
-   are prefixed as a compact `[Hindi, English]` tag (`StremioMapping.languageTag`) so they appear in the
-   Play dialog; streams with no detectable language are left unchanged.
+   are prefixed as a compact `[Tamil, English]` tag (`StremioMapping.languageTag`) so they appear in the
+   Play dialog; streams with no detectable language are left unchanged. Detection covers ~40 common
+   movie/series/anime languages using full English names plus unambiguous scene/ISO codes; ambiguous
+   short codes that double as ordinary words or names are intentionally excluded.
    `infoHash`-only streams (plain torrent addons) become a magnet via `StremioMapping.torrentUrlFor`
    (infoHash + `tracker:` sources + `fileIdx` as `index`) and are emitted as
    `ExtractorLinkType.MAGNET`; CloudStream's bundled torrent engine plays them from a local server,

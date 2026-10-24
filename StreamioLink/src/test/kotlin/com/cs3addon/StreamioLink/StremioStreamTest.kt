@@ -388,7 +388,7 @@ class StremioStreamTest {
         )
         // Meteor: no title, language tokens in the description/filename.
         assertEquals(
-            listOf("English"),
+            listOf("Russian", "English"),
             StremioMapping.streamLanguages(
                 StremioStream(
                     name = "[P2P☁️] Meteor",
@@ -403,9 +403,9 @@ class StremioStreamTest {
                 StremioStream(title = "Movie 1080p Dual Audio (Hindi)")
             )
         )
-        // Only the supported languages are detected; rest are ignored.
+        // Order of appearance wins and the tag list is capped at three.
         assertEquals(
-            listOf("English", "Hindi"),
+            listOf("English", "Hindi", "Tamil"),
             StremioMapping.streamLanguages(
                 StremioStream(
                     title = "English Hindi Tamil Telugu",
@@ -416,10 +416,79 @@ class StremioStreamTest {
     }
 
     @Test
+    fun detectsExpandedLanguageSet() {
+        assertEquals(
+            listOf("Tamil", "Telugu", "Malayalam"),
+            StremioMapping.streamLanguages(StremioStream(title = "1080p Tamil, Telugu, Malayalam"))
+        )
+        assertEquals(
+            listOf("Japanese", "Korean", "English"),
+            StremioMapping.streamLanguages(StremioStream(title = "Japanese + Korean + English audio"))
+        )
+        assertEquals(
+            listOf("Spanish", "French", "German"),
+            StremioMapping.streamLanguages(
+                StremioStream(description = "Movie.2020.1080p.Spa.Fre.Ger.DD5.1.mkv")
+            )
+        )
+        assertEquals(
+            listOf("Spanish", "French", "Portuguese"),
+            StremioMapping.streamLanguages(StremioStream(title = "Español, Français, Português"))
+        )
+        assertEquals(
+            listOf("Bengali", "Marathi", "Punjabi"),
+            StremioMapping.streamLanguages(
+                StremioStream(description = "Bengali Marathi Punjabi Gujarati Urdu")
+            )
+        )
+        assertEquals(
+            listOf("Russian", "Ukrainian", "English"),
+            StremioMapping.streamLanguages(
+                StremioStream(
+                    behaviorHints = StremioBehaviorHints(
+                        filename = "Movie.2024.1080p.Rus.Ukr.Eng.mkv"
+                    )
+                )
+            )
+        )
+        assertEquals(
+            listOf("Arabic", "Turkish", "Hebrew"),
+            StremioMapping.streamLanguages(StremioStream(title = "Arabic Türkçe Hebrew"))
+        )
+        assertEquals(
+            listOf("Filipino", "Malay", "Indonesian"),
+            StremioMapping.streamLanguages(StremioStream(title = "Tagalog Melayu Bahasa Indonesia"))
+        )
+    }
+
+    @Test
+    fun dedupesLanguageCodesAndNames() {
+        assertEquals(
+            listOf("English", "Hindi"),
+            StremioMapping.streamLanguages(
+                StremioStream(title = "English ENG Hindi HIN")
+            )
+        )
+    }
+
+    @Test
+    fun ignoresAmbiguousLanguageLikeWords() {
+        assertNull(StremioMapping.languageTag(StremioStream(title = "Ben-Hur")))
+        assertNull(StremioMapping.languageTag(StremioStream(title = "Mar 2020")))
+        assertNull(StremioMapping.languageTag(StremioStream(title = "May 2024")))
+        assertNull(StremioMapping.languageTag(StremioStream(description = "Price per episode")))
+        assertNull(StremioMapping.languageTag(StremioStream(title = "Dan in Real Life")))
+    }
+
+    @Test
     fun buildsLanguageTagOrNull() {
         assertEquals(
             "[Hindi, English]",
             StremioMapping.languageTag(StremioStream(title = "1080p Hindi, English"))
+        )
+        assertEquals(
+            "[Tamil, English]",
+            StremioMapping.languageTag(StremioStream(title = "1080p Tamil, English"))
         )
         assertNull(StremioMapping.languageTag(StremioStream(name = "HdHub 480p")))
         assertNull(StremioMapping.languageTag(StremioStream()))

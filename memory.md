@@ -537,3 +537,24 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   Edit is URL-only and replaces the entry in place (same position, flags); duplicates are rejected.
   `StremioSettings.save` writes legacy keys from the first enabled catalog so downgrading still works.
   Bumped 20 → 21.
+
+## 2026-10-24 — Expanded per-link language detection
+- Grew `StremioMapping.languageAliases` from English/Hindi/Multi to ~40 languages common in
+  movies/series/anime: the Indian set (Tamil, Telugu, Malayalam, Kannada, Bengali, Marathi,
+  Punjabi, Gujarati, Urdu), Asian (Japanese, Korean, Chinese, Thai, Indonesian, Vietnamese,
+  Filipino/Tagalog, Malay), European (Spanish, French, German, Italian, Portuguese, Russian,
+  Ukrainian, Polish, Dutch, Swedish, Danish, Norwegian, Finnish, Greek, Czech, Hungarian,
+  Romanian) and Arabic/Turkish/Hebrew/Persian.
+- Uses full English names plus unambiguous scene/ISO codes (`tam`, `tel`, `mal`, `kan`, `guj`,
+  `urd`, `rus`, `ukr`, `jpn`, `kor`, `zho`, `tur`, `tha`, `vie`, `fil`, `msa`, `fra`/`fre`,
+  `deu`/`ger`, `esp`/`spa`, `ita`, `por`, `nld`/`dut`, `swe`, `ces`/`cze`, `heb`, `fas`, `arb`)
+  and native-Latin spellings (`español`, `français`, `português`, `türkçe`, `čeština`, `română`).
+  Ambiguous codes that double as words/names (`ben`, `mar`, `per`, `may`, `dan`, `fin`, `nor`,
+  `pol`, `rom`, `ron`, `ara`, `pan`, `hun`, `ind`, `gre`, `sin`) are deliberately omitted.
+- Tokenizer changed from `[A-Za-z]+` to `\p{IsLatin}+` so accented Latin names match, while CJK
+  and other native scripts stay excluded (anime titles in kanji/kana must not imply Japanese
+  audio). Order-preserving dedupe and the 3-tag cap are unchanged.
+- Tests: updated Meteor (`Rus.Eng` now `[Russian, English]`) and the cap case; added coverage for
+  Indian, Japanese/Korean, scene codes, accented names, Arabic/Turkish/Hebrew, Filipino/Malay/
+  Indonesian, dedupe, and false-positive guards (`Ben-Hur`, `Mar 2020`, `per episode`).
+  `architecture.md` updated. publihed
