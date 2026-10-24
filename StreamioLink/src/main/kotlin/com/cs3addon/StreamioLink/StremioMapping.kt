@@ -31,6 +31,7 @@ object StremioMapping {
     private val manifestSuffixRegex = Regex("""/manifest\.json/?$""", RegexOption.IGNORE_CASE)
     private val videoFileRegex = Regex("""\.(mp4|mkv|webm|avi|mov|m4v|flv)(?![0-9a-z])""")
     private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
+    private val sentinelStreamUrlRegex = Regex("""/stream-errors/""", RegexOption.IGNORE_CASE)
     private val whitespaceRegex = Regex("""\s+""")
     private val whitespaceInUrlRegex = Regex("""\s""")
 
@@ -366,8 +367,22 @@ object StremioMapping {
         return recognisedScheme && !whitespaceInUrlRegex.containsMatchIn(trimmed)
     }
 
+    /**
+     * True for an addon "nothing found" sentinel. Instead of returning an empty stream list,
+     * some addons answer with a fake stream pointing at a stock error clip (Yukistreams:
+     * `[YS INFO] No streams found` -> `/assets/stream-errors/no-stream-found.mp4`). Emitting it
+     * would give the user a tappable link that plays the error video.
+     */
+    fun isSentinelStream(stream: StremioStream): Boolean {
+        if (sentinelStreamUrlRegex.containsMatchIn(stream.url.orEmpty())) return true
+        val label = listOfNotNull(stream.name, stream.title).joinToString(" ")
+        return label.contains("[YS INFO]", ignoreCase = true) &&
+            label.contains("No streams found", ignoreCase = true)
+    }
+
     /** Direct playable URL for a stream, or null when the stream only carries a torrent/site reference. */
     fun playbackUrlFor(stream: StremioStream): String? {
+        if (isSentinelStream(stream)) return null
         stream.url?.trim()?.takeIf { isPlayableStreamUrl(it) }?.let { return it }
         stream.ytId?.trim()?.takeIf { it.isNotEmpty() }?.let { return "https://www.youtube.com/watch?v=$it" }
         return null

@@ -81,6 +81,42 @@ class StremioStreamTest {
     }
 
     @Test
+    fun dropsSentinelNoStreamsPlaceholders() {
+        // Yukistreams answers an empty result with a stock error video instead of `[]`.
+        val json = """
+            {
+              "streams": [
+                {
+                  "name": "[YS INFO] No streams found",
+                  "title": "No playable streams found\nMelo Movie (2025)\nMovie",
+                  "url": "https://stremio.yukistreams.xyz/assets/stream-errors/locked.mp4",
+                  "behaviorHints": { "notWebReady": true }
+                },
+                {
+                  "url": "https://stremio.yukistreams.xyz/assets/stream-errors/no-stream-found.mp4",
+                  "behaviorHints": { "notWebReady": true }
+                },
+                {
+                  "name": "Yuki Direct\nHLS",
+                  "title": "Show EP 01",
+                  "url": "https://hls22.cdnvideo11.shop/master/abc.m3u8"
+                }
+              ]
+            }
+        """.trimIndent()
+        val streams = StremioMapping.parseStreams(json)
+        assertTrue(StremioMapping.isSentinelStream(streams[0]))
+        assertTrue(StremioMapping.isSentinelStream(streams[1]))
+        assertTrue(!StremioMapping.isSentinelStream(streams[2]))
+        assertNull(StremioMapping.playbackUrlFor(streams[0]))
+        assertNull(StremioMapping.playbackUrlFor(streams[1]))
+        assertEquals(
+            "https://hls22.cdnvideo11.shop/master/abc.m3u8",
+            StremioMapping.playbackUrlFor(streams[2])
+        )
+    }
+
+    @Test
     fun buildsMagnetFromInfoHashStream() {
         val stream = StremioStream(
             infoHash = "45fa4233ef87c58f5f8b4817e4d50c9f5363caef",

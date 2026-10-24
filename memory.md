@@ -459,3 +459,26 @@
 
 
 
+
+## 2026-10-24 — Yukistreams (catalog + source) compat check; drop sentinel "no streams" links — version 18
+- Tested `https://stremio.yukistreams.xyz/p.Yh4DGBks6bsMqxDc/manifest.json` (Stremio addon,
+  catalog+meta+stream+subtitles, types movie/series/anime).
+- Works as-is: manifest parses (resources mix the `"catalog"` string with `meta`/`stream`/
+  `subtitles` objects); 37 of 46 catalogs load with items, 6 are `search`-required (used by
+  plugin search only), 3 empty and 1 transient 502; anime catalogs are loadable and their items
+  report `type: series`; `kitsu:`/`mkvdrama-`/`kisskh-`/`onetouchtv-`/`shortdrama:`/`tt` IDs
+  all resolve through `/meta` + `/stream`; real `.m3u8` rows (KissKH, OneTouchTV; e.g.
+  `tt0848228`, `tt22084616`, `kisskh-…:1:1`) return 200 with no UA/Referer requirement and the
+  plugin maps them to `M3U8` with quality parsed from the stream name.
+- Bug found: when no source exists, Yuki returns one fake stream named
+  `[YS INFO] No streams found` with `url` pointing at `/assets/stream-errors/no-stream-found.mp4`
+  (or `locked.mp4`) and `notWebReady: true`. `playbackUrlFor` accepted it, so users saw a bogus
+  playable link that plays the error clip. Most mkvdrama/onetouchtv/shortdrama/anime items in the
+  sample were this sentinel.
+- Fix: `StremioMapping.isSentinelStream` (URL path `/stream-errors/`, or `[YS INFO]` +
+  "No streams found" label); `playbackUrlFor` returns null for it. Unit test covers both Yuki
+  sentinels plus a real HLS row. Bumped 17 → 18.
+- Addon-side, not fixed: `ys-v2-kisskh-*` ignores `skip` (same 10 items per page);
+  `ys-v3-anime-seasonal` 502s for `skip=24/25/30` and repeats page 1 for `skip=23` (the plugin
+  advances offsets by returned count per the Stremio spec, so row expansion can duplicate/stall).
+  `subtitles` is declared but returns `[]` for every tested id.
