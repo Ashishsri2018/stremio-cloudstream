@@ -558,3 +558,7 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   Indian, Japanese/Korean, scene codes, accented names, Arabic/Turkish/Hebrew, Filipino/Malay/
   Indonesian, dedupe, and false-positive guards (`Ben-Hur`, `Mar 2020`, `per episode`).
   `architecture.md` updated. publihed
+
+## 2026-10-24 — Restore to f878d2a baseline and bump version 26
+- Rolled back all changes after commit `f878d2a` (expand language detection) to restore baseline broad language detection behavior.
+- Bumped plugin version to 26 (`StreamioLink/build.gradle.kts`) so CloudStream replaces installed copies.
