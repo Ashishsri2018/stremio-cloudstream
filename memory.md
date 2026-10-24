@@ -1,5 +1,7 @@
 # StreamioLink Memory
 
+Dated change/release log. Current unresolved issues and limitations live in `known-issues.md`.
+
 ## Recent Changes
 - Initial scaffold: CloudStream 3 plugin that plays Stremio addon streams.
 - 1 catalog addon (default Cinemeta) + N source addons, managed via programmatic settings dialog.
@@ -50,7 +52,8 @@
   and `skip=<offset>`, advancing by returned count (`catalogSupportsSkip`).
 - `StremioApi` timeout split: manifest/catalog/meta 20 s (`DEFAULT_TIMEOUT_MS`), streams/subtitles
   60 s (`STREAM_TIMEOUT_MS`).
-- Out of scope: upstream HTTP 500 from some Cinejoy streams and addons serving expired signed URLs.
+- Out of scope (recorded in `known-issues.md`): Cinejoy upstream HTTP 500s and addons serving
+  expired signed URLs.
 
 ## 2026-10-16 — slow addons actually fixed (NiceHttp/OkHttp timeout trap) — version 5
 - Symptom: PenguPlay (and other slow aggregator addons) still "skipped" while hdhub plays, even
@@ -83,18 +86,16 @@
   50 catalogs are type `other`/`tv`, so `catalogCanLoadHome`/`catalogSupportsSearch` reject them
   (only `movie`/`series` accepted) -> useless as a *catalog* addon, fine as a *source* addon for
   `tt` movie/series ids.
-- Playback failures are addon-side link quality, not a plugin bug: for `tt0111161` only 8/15
-  candidates played (some 404, some `text/html` landing pages from Moviezwap, some dead hosts);
-  `tt0903747:1:1` was 10/10 playable. The plugin emits every candidate without a liveness check
-  (`resolveLinkType` probes only to classify kind), so users can tap a dead link first. The
-  plugin's header/UA handling was confirmed correct (206 with the addon's `Referer` + okhttp UA).
-- Deliberately not changed: no liveness filtering/reordering in `loadLinks` (skipped by request).
+- Live result: for `tt0111161` only 8/15 candidates played (404/HTML landing pages/dead hosts);
+  `tt0903747:1:1` was 10/10. Header/UA handling was confirmed correct. These are addon-side
+  link-quality issues, and no liveness filtering/reordering is done by request
+  (`known-issues.md`).
 - Tested `https://plaviohd.vercel.app/c/<config>/manifest.json` (PlavioHD, community.plaviohd):
   manifest OK (movie/series/tv, catalog+meta+stream, no idPrefixes), but its 4 catalogs are all
   `tv` (sports) -> source-addon only. As a source it is good: `tt0111161` returned 3/3 playable
   and `ffprobe` decoded them (h264 720p + AAC, and h264 1080p + AC3, ~2h22m). `tt0903747:1:1`
   returned a single Vidzee HLS that is actually a **JPEG trickplay playlist** (segments are
-  `image/jpeg`, `ffprobe` = "Invalid data found") — a real addon-side trap.
+  `image/jpeg`, not video) — an addon-side trap recorded in `known-issues.md`.
 - Tool follow-ups from this test: `--json` now emits only JSON (human summary suppressed); `--deep`
   fetches the first `#EXTINF` segment and marks an HLS playlist whose segments are images as
   NOT-MEDIA ("trickplay"), instead of trusting the `application/vnd.apple.mpegurl` content-type.
@@ -118,12 +119,9 @@
   `isTorrentUrl` detects it. `StremioProvider.candidatesFor` falls back from `playbackUrlFor` to
   the magnet and flags the candidate; `resolveLinkType` returns `ExtractorLinkType.MAGNET` for it
   (never probes). Added `fileIdx` to `StremioStream`. Unit tests cover magnet building.
-- Addon-side quirk found: Meteor's `/{config}/stream/...` returned `401 invalid session` for the
-  user's blob specifically because `languageFormat` was an array `["flags"]`; a string works. Its
-  `/{anything}/manifest.json` is a catch-all stub, so a bad install URL still "loads a manifest"
-  then silently yields no streams. Not fixable plugin-side.
-- Not implemented (possible follow-up): a setting to opt out of P2P/torrent links. CloudStream's
-  own consent dialog already gates each torrent session.
+- Addon-side caveats (recorded in `known-issues.md`): Meteor's catch-all manifest hides bad
+  configs; a malformed `languageFormat` array yields `401 invalid session`. No P2P opt-out setting
+  was added (CloudStream's consent dialog gates each torrent session).
 
 ## 2026-10-16 — Episode names showed as ids with Nuvio catalog — version 7
 - Symptom: every episode listed as its video id (`tt0903747:1:1`) instead of the episode title.
@@ -157,9 +155,8 @@
   full URL (catches `.m3u8` hidden in a proxy query) and `/hls`, `/playlist`, `mpegurl` hints.
 - Added a 5-minute in-memory stream-JSON cache in `StremioApi` (key `base|type|id`, only non-empty
   results, cap 64) so replaying/re-opening an episode does not refetch slow addons.
-- Deliberately NOT changed (user's call — keep the client light, let servers dedupe/filter): no
-  cross-addon dedup, no liveness filtering, no P2P opt-out. Addon-side limits remain: pengu's ~8 s
-  redirect is paid at playback, cnc dead links still appear, meteor's broken config is user-side.
+- Intentionally unchanged (see `known-issues.md`): no cross-addon dedup, liveness filtering, or P2P
+  opt-out; pengu's ~8 s redirect and cnc dead links remain.
 
 ## 2026-10-16 — efficiency/error-handling pass (concurrency, back-off, cancellation) — version 9
 - Question: "does it lazy-load catalog items?" Answer: **no, and it can't**. CloudStream's
@@ -478,10 +475,9 @@
 - Fix: `StremioMapping.isSentinelStream` (URL path `/stream-errors/`, or `[YS INFO]` +
   "No streams found" label); `playbackUrlFor` returns null for it. Unit test covers both Yuki
   sentinels plus a real HLS row. Bumped 17 → 18.
-- Addon-side, not fixed: `ys-v2-kisskh-*` ignores `skip` (same 10 items per page);
-  `ys-v3-anime-seasonal` 502s for `skip=24/25/30` and repeats page 1 for `skip=23` (the plugin
-  advances offsets by returned count per the Stremio spec, so row expansion can duplicate/stall).
-  `subtitles` is declared but returns `[]` for every tested id.
+- Addon-side, not fixed (recorded in `known-issues.md`): `ys-v2-kisskh-*` ignores `skip`;
+  `ys-v3-anime-seasonal` 502s for some offsets and repeats page 1 for others; its `subtitles`
+  resource returns `[]`.
 
 ## 2026-10-24 — Pluto TV (live channels) support: `tv` catalogs as movie-like items — version 19
 - Tested `https://dev.nebulawp.org/stremio/pluto-tv-addon/manifest.json` (live TV; `types:["tv"]`,
@@ -500,9 +496,9 @@
   (series and not live) drive the load/search response shape, so a channel is a `Movie` with one
   stream. `loadLinks` needs no change: payload type `tv` matches the manifest, and the HLS URL is
   classified `M3U8`. Unit tests cover support/search/live detection. Bumped 18 → 19.
-- Caveats: the `pluto` home row is 1561 items (no `skip`, so no pagination); adding `tv` also
-  surfaces CNCVerse's `tv` catalogs when it is used as the catalog addon; playback is live-only
-  (no EPG/seek), and Pluto URLs are time/geo-bound and regenerated per stream request.
+- Caveats recorded in `known-issues.md`: the `pluto` row cannot paginate; `tv` also surfaces other
+  catalog addons' `tv` rows; playback is live-only (no EPG/seek); Pluto URLs are time/geo-bound and
+  regenerated per stream request.
 
 ## 2026-10-24 — multiple catalog addons + Plavio (VOD source, live TV catalog) — version 20
 - Requested setup: Cinemeta/TMDB as primary home addon and Plavio as a second catalog addon for its
@@ -526,3 +522,18 @@
   each item payload and each catalog ref now carries `base`; home rows are concatenated
   primary-first with global title dedupe (`disambiguateTitles`); search stays on the primary addon.
   Bumped 19 → 20.
+
+## 2026-10-24 — per-addon edit + enable/disable in settings — version 21
+- Settings rows previously only had a "Remove" button, and the source list had no toggle. Added a
+  per-entry `enabled` flag for catalogs and sources, persisted as URL lists in the new
+  `streamiolink_disabled_catalog_urls` / `streamiolink_disabled_source_urls` keys. Missing keys on
+  upgrade mean "everything enabled", so existing configs migrate with no action.
+- Semantics: a disabled catalog contributes no home rows, is not the primary search/metadata addon
+  and is not queried for streams even if `useAsSource` is on. A disabled source is skipped by the
+  stream/subtitle fan-out. Entries are kept in the list (order and `useAsSource` preserved) so they
+  can be re-enabled. Disabling the primary catalog promotes the next enabled one; the UI disables
+  the toggle when only one enabled catalog remains, and Save refuses a zero-enabled state.
+- UI: every catalog/source row is now one line — URL, enable checkbox, `✏️` edit, `🗑️` delete.
+  Edit is URL-only and replaces the entry in place (same position, flags); duplicates are rejected.
+  `StremioSettings.save` writes legacy keys from the first enabled catalog so downgrading still works.
+  Bumped 20 → 21.

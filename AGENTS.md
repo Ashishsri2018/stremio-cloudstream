@@ -18,7 +18,7 @@ Canonical repo: `Ashishsri2018/stremio-cloudstream` (CI publishes builds there).
 - Fast local equivalent: `streamiolink-tests` — compiles `StremioMapping`/`StremioModels` + the JVM tests with the cached `kotlinc` and runs JUnit offline.
 - Single test: `./gradlew testDebugUnitTest --tests "com.cs3addon.StreamioLink.StremioStreamTest"`.
 - Plugin build: `./gradlew make makePluginsJson` → `.cs3` + `build/plugins.json`.
-- Addon playtest: `python3 tools/playtest.py <addon-url> --id tt0111161 --type movie` (live network, stdlib only) — **INCOMPLETE / LOW PRIORITY, not maintained**: it still mirrors the old mapping, does not build magnet/P2P links, and can report "no streams" for torrent-only addons. Don't rely on it; the plugin + its JVM unit tests are the source of truth. When it does something, `--manifest` prints a compatibility summary, `--search`/`--catalog ... --play` are other entry points, `--deep` fetches an HLS segment, `--json` is machine output.
+- Addon playtest: `python3 tools/playtest.py <addon-url> --id tt0111161 --type movie` (live network, stdlib only) — **INCOMPLETE / LOW PRIORITY, not maintained** (details in `known-issues.md`). Don't rely on it; the plugin + its JVM unit tests are the source of truth. When it does something, `--manifest` prints a compatibility summary, `--search`/`--catalog ... --play` are other entry points, `--deep` fetches an HLS segment, `--json` is machine output.
 - Live addons used for playtesting are recorded in `tools/test-addons.json` (nuvio catalog + hdhub/pengu/cnc/meteor, test id `tt0111161`). Keep it updated when addon configs change.
 - Local builds need Android SDK 35 (`compileSdk 35`), a `local.properties`/`ANDROID_HOME`, and network for Gradle 8.12 + JitPack — none present here, so treat `.github/workflows/build.yml` as the build source of truth (JDK 17 + Android SDK).
 
@@ -68,5 +68,5 @@ Split phases at each `PlayViewGen: loadLinks` line (Play is the first, Reload mi
 
 ## Docs
 
-- `architecture.md` — system layout + data flow; `memory.md` — running log of release/CI lessons (append new dated entries). Keep both in sync with behavior changes.
+- `architecture.md` — system layout + data flow; `memory.md` — running log of release/CI lessons (append new dated entries); `known-issues.md` — current unresolved issues/limitations (put new ones here, not in `memory.md`). Keep the architecture/memory docs in sync with behavior changes, and move fixed items out of `known-issues.md`.
 - Commit style is terse descriptive (`git log`); CI builds on pushes to `main`/`master`.

@@ -11,8 +11,8 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 
 ## Responsibilities
 - Register one CloudStream provider (`StreamioLink`) into the app.
-- Read one or more Stremio **catalog addons** (the first is primary for home ordering, search and
-  metadata) for home rows, search and metadata.
+- Read one or more Stremio **catalog addons** (the first enabled is primary for home ordering,
+  search and metadata) for home rows, search and metadata.
 - Fan out stream/subtitle requests to N Stremio **source addons** and merge results.
 - Persist addon configuration via the CloudStream data store.
 
@@ -22,8 +22,18 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 - `StremioApi` — network + manifest cache (TTL 30 min, stale fallback).
 - `StremioMapping` — pure, Android-free protocol logic (parsing, URL building, quality/prefix matching).
 - `StremioModels` — Jackson DTOs of the Stremio protocol.
-- `StremioSettings` — persisted keys and defaults.
-- `StremioSettingsDialog` — programmatic (no XML resources) settings UI.
+- `StremioSettings` — persisted keys and defaults. Catalog and source addons have an `enabled`
+  flag (persisted as the `streamiolink_disabled_catalog_urls` / `streamiolink_disabled_source_urls`
+  URL lists). Disabled entries stay configured and visible in settings but are skipped everywhere:
+  a disabled catalog contributes no home rows, is not the primary search/metadata addon and is not
+  queried for streams, even when its `useAsSource` flag is on. The primary catalog is the first
+  *enabled* entry, so disabling it promotes the next enabled one; the settings UI prevents
+  disabling the last enabled catalog.
+- `StremioSettingsDialog` — programmatic (no XML resources) settings UI. Each catalog/source row is
+  one line: URL, enable checkbox, edit (`✏️`) and delete (`🗑️`) buttons. Editing changes only the
+  URL, keeping the entry's position, `useAsSource` and enabled state. Disabling reuses the cached
+  tab invalidation because `StremioProvider.catalogSettingsKey()` is derived from the enabled
+  catalog URLs.
 
 ## Data Flow
 1. Home: each catalog addon's manifest → loadable catalogs → `/catalog/{type}/{id}.json` → rows.
@@ -69,7 +79,8 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    Live `tv` channels (Pluto TV and similar) are the exception: their meta carries no `videos`, so
    `StremioMapping.usesEpisodes` (series and not `LIVE_MEDIA_TYPES`) makes each channel a single
    movie-like item whose play action hits `/stream/tv/{id}.json` for one endless HLS URL.
-4. Links: all source addons declared `stream` resource and matching type/idPrefixes are queried
+4. Links: all enabled source addons (plus enabled catalog addons with `useAsSource`) declaring a
+   `stream` resource and matching type/idPrefixes are queried
    in parallel **per addon** (`supervisorScope`, so one addon's failure cannot cancel the others) —
    each addon emits its `ExtractorLink`s as soon as it responds, so a slow addon never delays the
    fast ones while still being awaited (up to `STREAM_TIMEOUT_MS`). Every addon request passes an
@@ -150,14 +161,6 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 - `repo.json` (main branch) points CloudStream at `builds/plugins.json`.
 
 ## Known Limitations
-- `infoHash`-only streams are played through CloudStream's built-in torrent engine (as `MAGNET`
-  links). This requires the host build to ship the torrent server and the user to accept the
-  torrent consent prompt; store builds without a torrent engine cannot play them.
-- `externalUrl` streams are skipped.
-- Addon configuration web UIs are not embedded; users paste configured manifest URLs. Some addons
-  reject malformed config blobs with `401 invalid session` even though their `/manifest.json` is a
-  catch-all stub — such an addon fetches a manifest but yields no streams.
-- The provider advertises `TvType.Others` (not episode-based) while still returning
-  `Movie`/`TvSeries` items, so CloudStream lists it under a dedicated category instead of mixing it
-  into Movies/Series. `loadLinksTimeoutMs` is raised to 180 s; individual network calls use
-  `StremioApi` timeouts (20 s metadata, 90 s streams/subtitles) so slow addons are not dropped.
+See `known-issues.md` for the current list (torrent/P2P constraints, skipped `externalUrl`
+streams, addon-config quirks, live-TV caveats, CloudStream video-track selection, and addon-side
+issues).

@@ -25,7 +25,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Programmatic settings UI (no XML resources needed).
- * One or more catalog addons (the first is primary) + a list of source addons.
+ * One or more catalog addons (the first enabled is primary) + a list of source addons.
+ * Every addon row carries an enable toggle, an edit button and a delete button.
  */
 object StremioSettingsDialog {
 
@@ -40,7 +41,7 @@ object StremioSettingsDialog {
             setPadding(dp(20), dp(8), dp(20), 0)
         }
 
-        container.addView(label(context, "Catalog addons (first = primary home, search & metadata)"))
+        container.addView(label(context, "Catalog addons (first enabled = primary home, search & metadata)"))
         val catalogsContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -48,6 +49,8 @@ object StremioSettingsDialog {
 
         fun rerenderCatalogs() {
             catalogsContainer.removeAllViews()
+            val enabledCount = catalogEntries.count { it.enabled }
+            val firstEnabledIndex = catalogEntries.indexOfFirst { it.enabled }
             catalogEntries.toList().forEachIndexed { index, entry ->
                 val block = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -57,24 +60,60 @@ object StremioSettingsDialog {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                 }
+                val status = when {
+                    !entry.enabled -> "(disabled)"
+                    index == firstEnabledIndex -> "(primary)"
+                    else -> null
+                }
                 row.addView(
                     TextView(context).apply {
-                        text = if (index == 0) "${entry.url}\n(primary)" else entry.url
+                        text = status?.let { "${entry.url}\n$it" } ?: entry.url
                         textSize = 14f
                         maxLines = 2
                         ellipsize = TextUtils.TruncateAt.MIDDLE
+                        alpha = if (entry.enabled) 1f else 0.5f
                         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     }
                 )
                 row.addView(
-                    Button(context).apply {
-                        text = "Remove"
-                        isEnabled = catalogEntries.size > 1
-                        setOnClickListener {
-                            catalogEntries.removeAll { it.url == entry.url }
-                            rerenderCatalogs()
+                    CheckBox(context).apply {
+                        isChecked = entry.enabled
+                        contentDescription = "Enabled"
+                        // The last enabled catalog must stay on: there is always a primary addon.
+                        isEnabled = !entry.enabled || enabledCount > 1
+                        isFocusable = true
+                        setOnCheckedChangeListener { _, checked ->
+                            val current = catalogEntries.indexOfFirst { it.url == entry.url }
+                            if (current >= 0) {
+                                catalogEntries[current] = catalogEntries[current].copy(enabled = checked)
+                                rerenderCatalogs()
+                            }
                         }
                     }
+                )
+                row.addView(
+                    iconButton(context, "✏️", "Edit addon") {
+                        showAddSourceDialog(
+                            context,
+                            title = "Edit catalog addon",
+                            initialUrl = entry.url,
+                        ) { url ->
+                            val current = catalogEntries.indexOfFirst { it.url == entry.url }
+                            if (current < 0) return@showAddSourceDialog
+                            if (url != entry.url && catalogEntries.any { it.url == url }) {
+                                showToast("Addon is already configured")
+                            } else {
+                                catalogEntries[current] = catalogEntries[current].copy(url = url)
+                                rerenderCatalogs()
+                            }
+                        }
+                    }
+                )
+                row.addView(
+                    iconButton(context, "🗑️", "Delete addon") {
+                        catalogEntries.removeAll { it.url == entry.url }
+                        rerenderCatalogs()
+                    }.apply { isEnabled = catalogEntries.size > 1 }
                 )
                 block.addView(row)
                 block.addView(
@@ -114,7 +153,8 @@ object StremioSettingsDialog {
 
         container.addView(
             TextView(context).apply {
-                text = "Extra catalog addons append their rows after the primary addon's rows."
+                text = "Uncheck an addon to disable it without removing it. Extra catalog addons " +
+                    "append their rows after the primary addon's rows."
                 textSize = 12f
                 setPadding(0, dp(4), 0, dp(4))
             }
@@ -128,36 +168,66 @@ object StremioSettingsDialog {
         val sourcesContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
         }
-        val sourceUrls = StremioSettings.sourceUrls().toMutableList()
+        val sourceEntries = StremioSettings.sourceEntries().toMutableList()
 
         fun rerenderSources() {
             sourcesContainer.removeAllViews()
-            sourceUrls.forEach { url ->
+            sourceEntries.toList().forEach { entry ->
                 val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                 }
                 row.addView(
                     TextView(context).apply {
-                        text = url
+                        text = if (entry.enabled) entry.url else "${entry.url}\n(disabled)"
                         textSize = 14f
-                        maxLines = 1
+                        maxLines = 2
                         ellipsize = TextUtils.TruncateAt.MIDDLE
+                        alpha = if (entry.enabled) 1f else 0.5f
                         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     }
                 )
                 row.addView(
-                    Button(context).apply {
-                        text = "Remove"
-                        setOnClickListener {
-                            sourceUrls.remove(url)
-                            rerenderSources()
+                    CheckBox(context).apply {
+                        isChecked = entry.enabled
+                        contentDescription = "Enabled"
+                        isFocusable = true
+                        setOnCheckedChangeListener { _, checked ->
+                            val current = sourceEntries.indexOfFirst { it.url == entry.url }
+                            if (current >= 0) {
+                                sourceEntries[current] = sourceEntries[current].copy(enabled = checked)
+                                rerenderSources()
+                            }
                         }
+                    }
+                )
+                row.addView(
+                    iconButton(context, "✏️", "Edit addon") {
+                        showAddSourceDialog(
+                            context,
+                            title = "Edit source addon",
+                            initialUrl = entry.url,
+                        ) { url ->
+                            val current = sourceEntries.indexOfFirst { it.url == entry.url }
+                            if (current < 0) return@showAddSourceDialog
+                            if (url != entry.url && sourceEntries.any { it.url == url }) {
+                                showToast("Addon is already configured")
+                            } else {
+                                sourceEntries[current] = sourceEntries[current].copy(url = url)
+                                rerenderSources()
+                            }
+                        }
+                    }
+                )
+                row.addView(
+                    iconButton(context, "🗑️", "Delete addon") {
+                        sourceEntries.removeAll { it.url == entry.url }
+                        rerenderSources()
                     }
                 )
                 sourcesContainer.addView(row)
             }
-            if (sourceUrls.isEmpty()) {
+            if (sourceEntries.isEmpty()) {
                 sourcesContainer.addView(
                     TextView(context).apply {
                         text = "No source addons yet."
@@ -174,9 +244,11 @@ object StremioSettingsDialog {
                 text = "+ Add source addon"
                 setOnClickListener {
                     showAddSourceDialog(context) { url ->
-                        if (!sourceUrls.contains(url)) {
-                            sourceUrls.add(url)
+                        if (sourceEntries.none { it.url == url }) {
+                            sourceEntries.add(StremioSettings.SourceEntry(url))
                             rerenderSources()
+                        } else {
+                            showToast("Addon is already configured")
                         }
                     }
                 }
@@ -204,16 +276,24 @@ object StremioSettingsDialog {
 
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val catalog = catalogEntries.filter { StremioMapping.normalizeAddonUrl(it.url) != null }
+                val catalog = catalogEntries
+                    .mapNotNull { entry ->
+                        StremioMapping.normalizeAddonUrl(entry.url)?.let { entry.copy(url = it) }
+                    }
+                    .distinctBy { it.url }
                 if (catalog.isEmpty()) {
                     showToast("Add at least one catalog addon")
+                    return@setOnClickListener
+                }
+                if (catalog.none { it.enabled }) {
+                    showToast("Keep at least one catalog addon enabled")
                     return@setOnClickListener
                 }
                 val meta = metaInput.text.toString()
                 StremioSettings.save(
                     catalogs = catalog,
                     metaUrl = meta,
-                    sourceUrls = sourceUrls,
+                    sources = sourceEntries,
                 )
                 dialog.dismiss()
                 showToast("StreamioLink settings saved")
@@ -227,21 +307,26 @@ object StremioSettingsDialog {
     private fun showAddSourceDialog(
         context: Context,
         title: String = "Add source addon",
+        initialUrl: String? = null,
         onAdded: (String) -> Unit,
     ) {
         val input = EditText(context).apply {
             hint = "https://addon.example/manifest.json"
-            val clipboard = (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
-                ?.primaryClip?.getItemAt(0)?.text?.toString()
-            if (!clipboard.isNullOrBlank() && clipboard.startsWith("http", ignoreCase = true)) {
-                setText(clipboard)
+            if (initialUrl != null) {
+                setText(initialUrl)
+            } else {
+                val clipboard = (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+                    ?.primaryClip?.getItemAt(0)?.text?.toString()
+                if (!clipboard.isNullOrBlank() && clipboard.startsWith("http", ignoreCase = true)) {
+                    setText(clipboard)
+                }
             }
         }
 
         AlertDialog.Builder(context)
             .setTitle(title)
             .setView(input)
-            .setPositiveButton("Add") { _, _ ->
+            .setPositiveButton(if (initialUrl == null) "Add" else "Save") { _, _ ->
                 val normalized = StremioMapping.normalizeAddonUrl(input.text.toString())
                 if (normalized == null) {
                     showToast("Not a valid addon URL")
@@ -251,6 +336,27 @@ object StremioSettingsDialog {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    /** Compact symbol button so a row fits URL + toggle + edit + delete on one line. */
+    private fun iconButton(
+        context: Context,
+        symbol: String,
+        description: String,
+        onClick: () -> Unit,
+    ): Button {
+        val density = context.resources.displayMetrics.density
+        fun dp(value: Int) = (value * density + 0.5f).toInt()
+        return Button(context).apply {
+            text = symbol
+            textSize = 18f
+            contentDescription = description
+            isFocusable = true
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(8), 0, dp(8), 0)
+            setOnClickListener { onClick() }
+        }
     }
 
     /** Best effort pre-fetch of all manifests so the first requests are instant. */
