@@ -219,7 +219,7 @@ class StremioProvider : MainAPI() {
         val type = meta.type ?: fallbackType
         val payload = StremioMapping.encodePayload(id, type)
         val title = meta.name?.takeIf { it.isNotBlank() } ?: id
-        return if (StremioMapping.isSeriesType(type)) {
+        return if (StremioMapping.usesEpisodes(type)) {
             newTvSeriesSearchResponse(title, payload) {
                 this.posterUrl = meta.poster
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
@@ -286,10 +286,11 @@ class StremioProvider : MainAPI() {
         val title = meta.name?.takeIf { it.isNotBlank() } ?: payload.id
         // Catalog types such as `anime` (or items without a type) only reveal whether they hold
         // episodes once the meta response is in; trust meta.type for the response shape and for
-        // the episode payloads, so series are not loaded as movies.
+        // the episode payloads, so series are not loaded as movies. Live `tv` channels have no
+        // videos and are movie-like single streams.
         val type = meta.type?.takeIf { it.isNotBlank() } ?: payload.type
 
-        return if (StremioMapping.isSeriesType(type)) {
+        return if (StremioMapping.usesEpisodes(type)) {
             val episodes = meta.videos.orEmpty().mapNotNull { toEpisode(type, it) }
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = meta.poster

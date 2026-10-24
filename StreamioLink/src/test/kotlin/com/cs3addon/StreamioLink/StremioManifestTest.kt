@@ -27,7 +27,9 @@ class StremioManifestTest {
             { "type": "movie", "id": "oldformat", "extraSupported": ["genre", "skip"], "extraRequired": ["genre"] },
             { "type": "movie", "id": "searchable", "extraSupported": ["search"] },
             { "type": "anime", "id": "airing", "name": "Anime Airing" },
-            { "type": "anime.series", "id": "anime-search", "extra": [ { "name": "search", "isRequired": true } ] }
+            { "type": "anime.series", "id": "anime-search", "extra": [ { "name": "search", "isRequired": true } ] },
+            { "type": "tv", "id": "live", "name": "Live TV", "extra": [ { "name": "search", "isRequired": false } ] },
+            { "type": "tv", "id": "live-popular", "name": "Live TV Popular" }
           ],
           "idPrefixes": ["tt"]
         }
@@ -152,6 +154,25 @@ class StremioManifestTest {
         assertFalse(StremioMapping.isSeriesType("movie"))
         assertFalse(StremioMapping.isSeriesType("anime"))
         assertFalse(StremioMapping.isSeriesType(null))
+    }
+
+    @Test
+    fun liveTvChannelsAreMovieLikeSingleStreams() {
+        assertTrue(StremioMapping.isSupportedMediaType("tv"))
+        assertTrue(StremioMapping.isLiveType("TV"))
+        assertFalse(StremioMapping.isLiveType("series"))
+        // `tv` still matches isSeriesType for protocol shape, but must not load as an
+        // episode list: Pluto-style metas carry no videos and stream one endless HLS URL.
+        assertFalse(StremioMapping.usesEpisodes("tv"))
+        assertTrue(StremioMapping.usesEpisodes("series"))
+        assertTrue(StremioMapping.usesEpisodes("anime.series"))
+        assertFalse(StremioMapping.usesEpisodes("movie"))
+
+        val byId = catalogs.associateBy { it.id }
+        assertTrue(StremioMapping.catalogCanLoadHome(byId.getValue("live")))
+        assertTrue(StremioMapping.catalogCanLoadHome(byId.getValue("live-popular")))
+        assertTrue(StremioMapping.catalogSupportsSearch(byId.getValue("live")))
+        assertFalse(StremioMapping.catalogSupportsSearch(byId.getValue("live-popular")))
     }
 
     @Test

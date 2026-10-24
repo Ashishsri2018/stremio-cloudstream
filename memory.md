@@ -482,3 +482,24 @@
   `ys-v3-anime-seasonal` 502s for `skip=24/25/30` and repeats page 1 for `skip=23` (the plugin
   advances offsets by returned count per the Stremio spec, so row expansion can duplicate/stall).
   `subtitles` is declared but returns `[]` for every tested id.
+
+## 2026-10-24 — Pluto TV (live channels) support: `tv` catalogs as movie-like items — version 19
+- Tested `https://dev.nebulawp.org/stremio/pluto-tv-addon/manifest.json` (live TV; `types:["tv"]`,
+  resources `["catalog","meta","stream"]`, no idPrefixes, no subtitles).
+- Before this change it was completely unusable: `tv` was not in `SUPPORTED_MEDIA_TYPES`, so both
+  catalogs were rejected from home/search; `resourceTypesFor` falls back to `["tv"]`, so a
+  movie/series payload never matched the stream resource; `/meta|stream/movie/tt…` returns an HTML
+  page (HTTP 200, not JSON). Even bypassing the filters would have been broken because
+  `isSeriesType("tv")` is true and Pluto metas have no `videos` (empty series, nothing to play).
+- Addon shape: `tv/pluto` (1561 channels, supports `search=`, no `skip`) and `tv/pluto_popular`
+  (59 channels, no search/skip); meta has name/poster/background/description and no videos; each
+  channel returns exactly one `url` = Pluto `master.m3u8` (JWT-signed). Verified 5 channels: HTTP
+  200 `application/x-mpegURL`, works with both `okhttp/4.12.0` and browser UA, no Referer needed.
+  One transient non-JSON response was seen, succeeding on retry.
+- Fix: added `tv` to `SUPPORTED_MEDIA_TYPES`; `LIVE_MEDIA_TYPES`/`isLiveType` + `usesEpisodes`
+  (series and not live) drive the load/search response shape, so a channel is a `Movie` with one
+  stream. `loadLinks` needs no change: payload type `tv` matches the manifest, and the HLS URL is
+  classified `M3U8`. Unit tests cover support/search/live detection. Bumped 18 → 19.
+- Caveats: the `pluto` home row is 1561 items (no `skip`, so no pagination); adding `tv` also
+  surfaces CNCVerse's `tv` catalogs when it is used as the catalog addon; playback is live-only
+  (no EPG/seek), and Pluto URLs are time/geo-bound and regenerated per stream request.

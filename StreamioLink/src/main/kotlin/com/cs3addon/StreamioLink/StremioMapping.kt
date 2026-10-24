@@ -17,7 +17,13 @@ object StremioMapping {
      * movie/series metas as the others (their items declare `type`), so they are loadable too;
      * excluding them dropped whole rows from addons such as AIOMetadata.
      */
-    val SUPPORTED_MEDIA_TYPES = setOf("movie", "series", "anime", "anime.movie", "anime.series")
+    val SUPPORTED_MEDIA_TYPES = setOf("movie", "series", "anime", "anime.movie", "anime.series", "tv")
+
+    /**
+     * Live-channel types. A `tv` meta carries no `videos`; it is a single endless stream (Pluto TV
+     * and similar addons), so it is surfaced as a movie-like item instead of an empty series.
+     */
+    val LIVE_MEDIA_TYPES = setOf("tv")
 
     /**
      * Stremio CDNs (e.g. the `hakunaymatata.com` hosts behind MovieBox/VidLink) return
@@ -178,6 +184,15 @@ object StremioMapping {
         "series", "anime.series", "tv", "tvseries" -> true
         else -> false
     }
+
+    fun isLiveType(type: String?): Boolean =
+        LIVE_MEDIA_TYPES.contains(type?.trim()?.lowercase())
+
+    /**
+     * True when the item should be loaded as a series with episodes. Live `tv` channels are
+     * single-stream items, so they are excluded even though [isSeriesType] matches `tv`.
+     */
+    fun usesEpisodes(type: String?): Boolean = isSeriesType(type) && !isLiveType(type)
 
     /**
      * Value for the catalog's required extras, as a protocol path extra (`genre=Fall%202026`).

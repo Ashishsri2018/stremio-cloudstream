@@ -7,14 +7,15 @@ Canonical repo: `Ashishsri2018/stremio-cloudstream` (CI publishes builds there).
 ## Environment (verified — do not re-check every run)
 
 - **No `gradle`/`./gradlew` execution possible here**: no Android SDK, no `local.properties`/`ANDROID_HOME`. Do not try `./gradlew ...`; it fails at configuration. Never spend turns probing for it.
-- **Never compile/test locally (on-device)**: do not download or install `kotlinc`, JDK toolchains, or ad-hoc jars in this container. GitHub Actions is the only build/test runner — commit + push, then `gh run watch <run-id> --exit-status` and inspect failures with `gh run view <run-id> --log-failed`.
-- **Optional cached checker** (already installed system-wide, do not re-download): `kotlinc` (2.4.21) is on `PATH`, and `streamiolink-tests` ([script](/root/iptv/.toolchain/kotlin-jvm/run-tests.sh)) compiles `StremioMapping`/`StremioModels` + the JVM tests and runs JUnit offline. Convenience only — CI remains the source of truth.
+- **Heavy compilation is CI-only**: plugin builds (`make`, `makePluginsJson`, `.cs3`) and full Android/Gradle test runs happen only in GitHub Actions — commit + push, then `gh run watch <run-id> --exit-status` and inspect failures with `gh run view <run-id> --log-failed`.
+- **Lightweight local checks are allowed**: `kotlinc` (2.4.21) is installed system-wide on `PATH`, and `streamiolink-tests` ([script](/root/iptv/.toolchain/kotlin-jvm/run-tests.sh)) compiles `StremioMapping`/`StremioModels` + the JVM tests and runs JUnit offline. Do not download/install extra toolchains or jars; these cached tools are enough. CI remains the source of truth for the real build.
 - **`git` and `gh` ARE installed and authenticated** as `Ashishsri2018` (git user/email set, `gh auth status` logged in, HTTPS push works). Commit/push and watch CI with `gh run watch <id> --exit-status` directly — no need to verify auth first.
 - CI (`.github/workflows/build.yml`) is the only real build; it runs on push to `main` and publishes to the `builds` branch.
 
 ## Commands
 
 - Unit tests: `./gradlew testDebugUnitTest` — pure JVM, no network, cover `StremioMapping`.
+- Fast local equivalent: `streamiolink-tests` — compiles `StremioMapping`/`StremioModels` + the JVM tests with the cached `kotlinc` and runs JUnit offline.
 - Single test: `./gradlew testDebugUnitTest --tests "com.cs3addon.StreamioLink.StremioStreamTest"`.
 - Plugin build: `./gradlew make makePluginsJson` → `.cs3` + `build/plugins.json`.
 - Addon playtest: `python3 tools/playtest.py <addon-url> --id tt0111161 --type movie` (live network, stdlib only) — **INCOMPLETE / LOW PRIORITY, not maintained**: it still mirrors the old mapping, does not build magnet/P2P links, and can report "no streams" for torrent-only addons. Don't rely on it; the plugin + its JVM unit tests are the source of truth. When it does something, `--manifest` prints a compatibility summary, `--search`/`--catalog ... --play` are other entry points, `--deep` fetches an HLS segment, `--json` is machine output.

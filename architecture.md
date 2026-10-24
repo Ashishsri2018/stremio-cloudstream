@@ -26,8 +26,8 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 
 ## Data Flow
 1. Home: catalog addon manifest → loadable catalogs → `/catalog/{type}/{id}.json` → rows.
-   A catalog is loadable when its type is `movie`, `series`, `anime`, `anime.movie` or
-   `anime.series` and every required extra can be satisfied from the manifest itself
+   A catalog is loadable when its type is `movie`, `series`, `anime`, `anime.movie`,
+   `anime.series` or `tv` and every required extra can be satisfied from the manifest itself
    (`StremioMapping.catalogPresetExtra`: its `default`, else the first `options` entry).
    `search`/`similar`/`calendarVideosIds` therefore stay off the home page. The resolved preset is
    sent as a path extra (`genre=Fall%202026`), so genre-locked catalogs (TMDB By Year, By Language,
@@ -56,6 +56,9 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 3. Load: `/meta/{type}/{id}.json` (catalog addon, then fallback) → movie page or episode list.
    The response shape follows `meta.type` (falling back to the payload type), so an `anime` catalog
    item that resolves to a series keeps its episode list and its episode links use the series type.
+   Live `tv` channels (Pluto TV and similar) are the exception: their meta carries no `videos`, so
+   `StremioMapping.usesEpisodes` (series and not `LIVE_MEDIA_TYPES`) makes each channel a single
+   movie-like item whose play action hits `/stream/tv/{id}.json` for one endless HLS URL.
 4. Links: all source addons declared `stream` resource and matching type/idPrefixes are queried
    in parallel **per addon** (`supervisorScope`, so one addon's failure cannot cancel the others) —
    each addon emits its `ExtractorLink`s as soon as it responds, so a slow addon never delays the
