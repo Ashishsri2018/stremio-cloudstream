@@ -207,6 +207,26 @@ class StremioManifestTest {
     }
 
     @Test
+    fun roundTripsCatalogRefsWithBase() {
+        val encoded = StremioMapping.encodeCatalogRef("tv", "sports", "https://hd.plavio.site/c/abc")
+        val decoded = StremioMapping.decodeCatalogRef(encoded)
+        assertEquals("tv", decoded?.type)
+        assertEquals("sports", decoded?.id)
+        assertEquals("https://hd.plavio.site/c/abc", decoded?.base)
+        assertEquals(null, StremioMapping.decodeCatalogRef("""{"type":"tv","id":"sports"}""")?.base)
+    }
+
+    @Test
+    fun disambiguatesDuplicateHomeRowTitlesAcrossAddons() {
+        val titles = listOf("Popular", "Popular", "Popular", "Top")
+        val suffixes = listOf("Cinemeta", "TMDB", "TMDB", "Cinemeta")
+        assertEquals(
+            listOf("Popular", "Popular (TMDB)", "Popular (TMDB 2)", "Top"),
+            StremioMapping.disambiguateTitles(titles, suffixes),
+        )
+    }
+
+    @Test
     fun buildsProtocolUrls() {
         val base = "https://addon.example"
         assertEquals("$base/catalog/movie/top.json", StremioMapping.buildCatalogUrl(base, "movie", "top"))

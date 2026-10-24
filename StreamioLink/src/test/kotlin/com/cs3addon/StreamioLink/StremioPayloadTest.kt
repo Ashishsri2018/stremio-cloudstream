@@ -23,6 +23,22 @@ class StremioPayloadTest {
     }
 
     @Test
+    fun payloadRoundTripCarriesCatalogBase() {
+        val encoded = StremioMapping.encodePayload("plaviohdtv-42", "tv", "https://hd.plavio.site/c/abc")
+        val decoded = StremioMapping.decodePayload(encoded)
+        assertEquals("plaviohdtv-42", decoded?.id)
+        assertEquals("tv", decoded?.type)
+        assertEquals("https://hd.plavio.site/c/abc", decoded?.base)
+    }
+
+    @Test
+    fun decodesLegacyPayloadWithoutBase() {
+        val decoded = StremioMapping.decodePayload("""{"id":"tt1234567","type":"movie"}""")
+        assertEquals("tt1234567", decoded?.id)
+        assertNull(decoded?.base)
+    }
+
+    @Test
     fun decodesRawJsonPayload() {
         val decoded = StremioMapping.decodePayload("""{"id":"kitsu:123","type":"series"}""")
         assertEquals("kitsu:123", decoded?.id)

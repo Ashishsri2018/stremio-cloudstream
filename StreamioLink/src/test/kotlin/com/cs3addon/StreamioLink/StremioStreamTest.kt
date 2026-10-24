@@ -117,6 +117,20 @@ class StremioStreamTest {
     }
 
     @Test
+    fun dropsHealthEndpointPlaceholders() {
+        // PlavioHD emits its status JSON as a "stream" for non-started events and for
+        // channels that only work in an external player.
+        val stream = StremioStream(
+            name = "Tip: Use an external player",
+            url = "https://sports.highfly.to/health",
+        )
+        assertTrue(StremioMapping.isSentinelStream(stream))
+        assertNull(StremioMapping.playbackUrlFor(stream))
+        assertTrue(StremioMapping.isSentinelStream(StremioStream(url = "https://x.example/health?check=1")))
+        assertTrue(!StremioMapping.isSentinelStream(StremioStream(url = "https://x.example/healthy/stream.m3u8")))
+    }
+
+    @Test
     fun buildsMagnetFromInfoHashStream() {
         val stream = StremioStream(
             infoHash = "45fa4233ef87c58f5f8b4817e4d50c9f5363caef",

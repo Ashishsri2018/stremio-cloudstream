@@ -38,6 +38,7 @@ object StremioMapping {
     private val videoFileRegex = Regex("""\.(mp4|mkv|webm|avi|mov|m4v|flv)(?![0-9a-z])""")
     private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
     private val sentinelStreamUrlRegex = Regex("""/stream-errors/""", RegexOption.IGNORE_CASE)
+    private val healthEndpointUrlRegex = Regex("""/healthz?(?:[?#]|$)""", RegexOption.IGNORE_CASE)
     private val whitespaceRegex = Regex("""\s+""")
     private val whitespaceInUrlRegex = Regex("""\s""")
 
@@ -113,22 +114,26 @@ object StremioMapping {
 
     // ---------------------------------------------------------------- payload
 
-    fun encodePayload(id: String, type: String): String =
-        mapper.writeValueAsString(StremioPayload(id = id, type = type))
+    fun encodePayload(id: String, type: String, base: String? = null): String =
+        mapper.writeValueAsString(StremioPayload(id = id, type = type, base = base))
 
     fun decodePayload(data: String): StremioPayload? = try {
         mapper.readValue(data, StremioPayload::class.java)
             // Reject blank ids/types: they would build URLs like `/stream/movie/.json`.
             .takeIf { it.id.isNotBlank() && it.type.isNotBlank() }
+            ?.let { if (it.base.isNullOrBlank()) it.copy(base = null) else it }
     } catch (t: Throwable) {
         null
     }
 
-    fun encodeCatalogRef(type: String, catalogId: String): String =
-        mapper.writeValueAsString(StremioCatalogRef(type = type, id = catalogId))
+    fun encodeCatalogRef(type: String, catalogId: String, base: String? = null): String =
+        mapper.writeValueAsString(StremioCatalogRef(type = type, id = catalogId, base = base))
 
     fun decodeCatalogRef(data: String?): StremioCatalogRef? = try {
-        data?.takeIf { it.isNotBlank() }?.let { mapper.readValue(it, StremioCatalogRef::class.java) }
+        data?.takeIf { it.isNotBlank() }?.let {
+            mapper.readValue(it, StremioCatalogRef::class.java)
+                .let { ref -> if (ref.base.isNullOrBlank()) ref.copy(base = null) else ref }
+        }
     } catch (t: Throwable) {
         null
     }
@@ -275,6 +280,28 @@ object StremioMapping {
         return "$addonName $type".trim()
     }
 
+    /**
+     * Makes row titles unique across every catalog addon. [catalogTitles] only resolves
+     * collisions inside one addon; when several catalog addons are configured, two addons can
+     * still expose the same row name and Cloudstream's name-keyed row map would drop one.
+     * [suffixes] (per row, usually the addon name) disambiguate those cross-addon collisions.
+     */
+    fun disambiguateTitles(titles: List<String>, suffixes: List<String>): List<String> {
+        val used = HashSet<String>()
+        return titles.mapIndexed { index, raw ->
+            val title = raw.trim().ifEmpty { "Catalog" }
+            if (used.add(title)) return@mapIndexed title
+            val suffix = suffixes.getOrNull(index)?.trim()?.takeIf { it.isNotEmpty() } ?: "Addon"
+            var candidate = "$title ($suffix)"
+            var counter = 1
+            while (!used.add(candidate)) {
+                counter++
+                candidate = "$title ($suffix $counter)"
+            }
+            candidate
+        }
+    }
+
     private fun mediaTypeLabel(type: String?): String = when (type?.trim()?.lowercase()) {
         "movie" -> "Movies"
         "series" -> "Series"
@@ -389,7 +416,11 @@ object StremioMapping {
      * would give the user a tappable link that plays the error video.
      */
     fun isSentinelStream(stream: StremioStream): Boolean {
-        if (sentinelStreamUrlRegex.containsMatchIn(stream.url.orEmpty())) return true
+        val url = stream.url.orEmpty()
+        if (sentinelStreamUrlRegex.containsMatchIn(url)) return true
+        // Some addons use a health/status JSON endpoint as a placeholder for "not live yet"
+        // or "use an external player" (PlavioHD: https://sports.highfly.to/health).
+        if (healthEndpointUrlRegex.containsMatchIn(url)) return true
         val label = listOfNotNull(stream.name, stream.title).joinToString(" ")
         return label.contains("[YS INFO]", ignoreCase = true) &&
             label.contains("No streams found", ignoreCase = true)

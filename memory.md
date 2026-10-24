@@ -503,3 +503,26 @@
 - Caveats: the `pluto` home row is 1561 items (no `skip`, so no pagination); adding `tv` also
   surfaces CNCVerse's `tv` catalogs when it is used as the catalog addon; playback is live-only
   (no EPG/seek), and Pluto URLs are time/geo-bound and regenerated per stream request.
+
+## 2026-10-24 — multiple catalog addons + Plavio (VOD source, live TV catalog) — version 20
+- Requested setup: Cinemeta/TMDB as primary home addon and Plavio as a second catalog addon for its
+  live sports rows. The old single-catalog model could not do this: the catalog base was a global
+  setting, so items from a second addon would fetch meta/streams from the primary addon.
+- Plavio (`https://plaviohd.vercel.app/c/<config>/manifest.json`; test config also at
+  `hd.plavio.site/c/<config>`): types `movie/series/tv`, resources `stream` + `meta` +
+  `subtitles` (no subtitles for `tv`), stream/meta idPrefixes `tt` + `plaviohdtv-`. Catalogs are
+  **live TV only** (type `tv`, 15 sport categories); no movie/series catalog exists.
+- Live-tested as VOD source: `tt0111161` → 33 streams, `tt0903747:1:1` → 20 streams (MovieBox
+  `video/mp4` and Google Drive `video/mkv` both HTTP 200 after the injected okhttp UA).
+- Live-tested as catalog addon: 12 non-empty `tv` rows (baseball/AFL/billiards empty), meta has
+  poster/logo/description and no videos; HLS verified end-to-end (master 200 +
+  `video/MP2T` segment 200). Non-started events and "Tip: Use an external player" channels return
+  `https://sports.highfly.to/health` (JSON, 130 bytes) as the stream URL → now a sentinel.
+- Plavio `/meta` for VOD ids is a stub (`{"id":"tt0903747","type":"series","name":"tt0903747"}`,
+  no videos), so `fetchMeta` must not stop at the item's own addon when the meta is a stub; it
+  tries item base → primary catalog addon → metadata fallback and skips blank/stub metas.
+- Implementation: settings store an ordered catalog list (`streamiolink_catalog_urls`) with a
+  per-entry source flag (`streamiolink_catalog_source_urls`), migrating the old single URL/toggle;
+  each item payload and each catalog ref now carries `base`; home rows are concatenated
+  primary-first with global title dedupe (`disambiguateTitles`); search stays on the primary addon.
+  Bumped 19 → 20.

@@ -165,14 +165,18 @@ data class StremioSubtitle(
 data class StremioPayload(
     @JsonProperty("id") val id: String,
     @JsonProperty("type") val type: String,
+    /** Catalog addon the item came from, so its metadata is fetched from the right addon. */
+    @JsonProperty("base") val base: String? = null,
 )
 
 /**
  * Identifies a single catalog. Travels through Cloudstream inside [MainPageData.data]
- * so pagination requests can target one catalog at a time.
+ * so pagination requests can target one catalog at a time. [base] is the catalog addon URL
+ * (multiple catalog addons are supported; the first one is the primary home addon).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class StremioCatalogRef(
     @JsonProperty("type") val type: String,
     @JsonProperty("id") val id: String,
+    @JsonProperty("base") val base: String? = null,
 )

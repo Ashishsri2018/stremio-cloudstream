@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Programmatic settings UI (no XML resources needed).
- * One catalog addon + a list of source addons.
+ * One or more catalog addons (the first is primary) + a list of source addons.
  */
 object StremioSettingsDialog {
 
@@ -40,20 +40,89 @@ object StremioSettingsDialog {
             setPadding(dp(20), dp(8), dp(20), 0)
         }
 
-        container.addView(label(context, "Catalog addon URL"))
-        val catalogInput = editText(context, StremioSettings.catalogUrl())
-        container.addView(catalogInput)
+        container.addView(label(context, "Catalog addons (first = primary home, search & metadata)"))
+        val catalogsContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val catalogEntries = StremioSettings.catalogEntries().toMutableList()
+
+        fun rerenderCatalogs() {
+            catalogsContainer.removeAllViews()
+            catalogEntries.toList().forEachIndexed { index, entry ->
+                val block = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, dp(4), 0, dp(4))
+                }
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                row.addView(
+                    TextView(context).apply {
+                        text = if (index == 0) "${entry.url}\n(primary)" else entry.url
+                        textSize = 14f
+                        maxLines = 2
+                        ellipsize = TextUtils.TruncateAt.MIDDLE
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+                )
+                row.addView(
+                    Button(context).apply {
+                        text = "Remove"
+                        isEnabled = catalogEntries.size > 1
+                        setOnClickListener {
+                            catalogEntries.removeAll { it.url == entry.url }
+                            rerenderCatalogs()
+                        }
+                    }
+                )
+                block.addView(row)
+                block.addView(
+                    CheckBox(context).apply {
+                        text = "Also use as a stream source"
+                        isChecked = entry.useAsSource
+                        isFocusable = true
+                        setOnCheckedChangeListener { _, checked ->
+                            val current = catalogEntries.indexOfFirst { it.url == entry.url }
+                            if (current >= 0) {
+                                catalogEntries[current] = catalogEntries[current].copy(useAsSource = checked)
+                            }
+                        }
+                    }
+                )
+                catalogsContainer.addView(block)
+            }
+        }
+        rerenderCatalogs()
+        container.addView(catalogsContainer)
+
+        container.addView(
+            Button(context).apply {
+                text = "+ Add catalog addon"
+                setOnClickListener {
+                    showAddSourceDialog(context, title = "Add catalog addon") { url ->
+                        if (catalogEntries.none { it.url == url }) {
+                            catalogEntries.add(StremioSettings.CatalogEntry(url, useAsSource = true))
+                            rerenderCatalogs()
+                        } else {
+                            showToast("Addon is already configured")
+                        }
+                    }
+                }
+            }
+        )
+
+        container.addView(
+            TextView(context).apply {
+                text = "Extra catalog addons append their rows after the primary addon's rows."
+                textSize = 12f
+                setPadding(0, dp(4), 0, dp(4))
+            }
+        )
 
         container.addView(label(context, "Metadata fallback addon (used when the catalog addon has no meta)"))
         val metaInput = editText(context, StremioSettings.metaUrl())
         container.addView(metaInput)
-
-        val useCatalogAsSource = CheckBox(context).apply {
-            text = "Also use the catalog addon as a stream source"
-            isChecked = StremioSettings.useCatalogAsSource()
-            isFocusable = true
-        }
-        container.addView(useCatalogAsSource)
 
         container.addView(label(context, "Source addons (streams & subtitles)"))
         val sourcesContainer = LinearLayout(context).apply {
@@ -135,17 +204,16 @@ object StremioSettingsDialog {
 
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val catalog = catalogInput.text.toString()
-                val meta = metaInput.text.toString()
-                if (StremioMapping.normalizeAddonUrl(catalog) == null) {
-                    showToast("Catalog addon URL is not valid")
+                val catalog = catalogEntries.filter { StremioMapping.normalizeAddonUrl(it.url) != null }
+                if (catalog.isEmpty()) {
+                    showToast("Add at least one catalog addon")
                     return@setOnClickListener
                 }
+                val meta = metaInput.text.toString()
                 StremioSettings.save(
-                    catalogUrl = catalog,
+                    catalogs = catalog,
                     metaUrl = meta,
                     sourceUrls = sourceUrls,
-                    useCatalogAsSource = useCatalogAsSource.isChecked,
                 )
                 dialog.dismiss()
                 showToast("StreamioLink settings saved")
@@ -156,7 +224,11 @@ object StremioSettingsDialog {
         dialog.show()
     }
 
-    private fun showAddSourceDialog(context: Context, onAdded: (String) -> Unit) {
+    private fun showAddSourceDialog(
+        context: Context,
+        title: String = "Add source addon",
+        onAdded: (String) -> Unit,
+    ) {
         val input = EditText(context).apply {
             hint = "https://addon.example/manifest.json"
             val clipboard = (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
@@ -167,7 +239,7 @@ object StremioSettingsDialog {
         }
 
         AlertDialog.Builder(context)
-            .setTitle("Add source addon")
+            .setTitle(title)
             .setView(input)
             .setPositiveButton("Add") { _, _ ->
                 val normalized = StremioMapping.normalizeAddonUrl(input.text.toString())
@@ -185,7 +257,7 @@ object StremioSettingsDialog {
     private fun warmUpAddons() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val bases = (StremioSettings.streamAddonUrls() + StremioSettings.catalogUrl() + StremioSettings.metaUrl())
+                val bases = (StremioSettings.streamAddonUrls() + StremioSettings.catalogUrls() + StremioSettings.metaUrl())
                     .mapNotNull { StremioMapping.normalizeAddonUrl(it) }
                     .distinct()
                 val names = bases.map { base ->
