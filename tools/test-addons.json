@@ -1,10 +1,20 @@
 {
   "_comment": "Live addons used to playtest StreamioLink. Catalog = nuvio, sources = the four addons under test. The plugin accepts either the base URL or the manifest.json URL. Test movie: tt0111161 (The Shawshank Redemption).",
   "testId": "tt0111161",
-  "catalog": {
-    "name": "Nuvio",
-    "url": "https://catalog.nuvio.tv/manifest.json"
-  },
+  
+  "catalogs": [
+    {
+      "name": "AioMetadata",
+      "url":"https://aiometadata.elfhosted.com/stremio/93238572-ca69-4c59-a424-2016330a4d71/manifest.json",
+      "notes": "tmbdb catalog with animes"
+    },
+    {
+      "name": "nuvio",
+      "url": "https://catalog.nuvio.tv/manifest.json",
+      "notes": "catalog provided by Nuvio app"
+    }
+  ],
+  
   "sources": [
     {
       "name": "hdhub",
@@ -26,15 +36,21 @@
     },
     {
       "name": "playvio",
-      "url": "https://plaviohd.vercel.app/c/eyJzb3VyY2VzIjpbIkhESHViIiwiTW92aWVCb3giLCI5eGZsaXgiLCJWaWR5IiwiQ2luZXpvIiwiVmlkemVlIiwiVmVnYW1vdmllcyIsIlZpeFNyYyIsIkxpdmVUViJdLCJxIjpbIjcyMHAiLCI0ODBwIl0sImxhbmciOlsiRW5nbGlzaCIsIkhpbmRpIiwiQXJhYmljIiwiU3BhbmlzaCIsIkZyZW5jaCJdLCJjYXQiOlsiSG9sbHl3b29kIiwiQm9sbHl3b29kIiwiQW5pbWUiLCJLb3JlYW4iLCJDaGluZXNlIiwiVHVya2lzaCJdLCJ0dnJlZ2lvbiI6WyJVUyIsIlVLIiwiQ0EiLCJBVSIsIk5aIl0sInNvcnQiOiJhc2MiLCJzcmNPcmRlciI6WyJIREh1YiIsIk1vdmllQm94IiwiOXhmbGl4IiwiVmlkeSIsIkNpbmV6byIsIlZpZHplZSIsIlZlZ2Ftb3ZpZXMiLCJWaXhTcmMiLCJMaXZlVFYiXSwiaGVhbHRoY2hlY2siOnRydWV9/manifest.json",
-      "home": "https://plaviohd.vercel.app/configure",
-      "notes": "another http sources addon"
+      "url": "https://hd.plavio.site/c/eyJzb3VyY2VzIjpbIkhESHViIiwiTW92aWVCb3giLCJDaW5lem8iLCJWaWRsaW5rIiwiVmlkemVlIiwiQ2FzdGxlVFYiLCJWZWdhbW92aWVzIiwiVmlkQ29yZSIsIkJpbmdyIiwiTW92aWVzNHUiLCJEZXNpRmxpeCIsIlNwYWNlRG9tIiwiVmlkeSIsIkFuaVBtIiwiTW92aWVzSHVudCIsIjRraGRodWIiLCJPbmVUb3VjaFRWIiwiR2VvTW92aWVzIiwiV2F0Y2hNb3ZpZXNQSyIsIlZpZHJvY2siLCJBbml3YXRjaEZpdCIsIkFuaWtvdG8iLCJNb3Z5IiwiV2F5Mk1vdmllcyIsIk1vdmllc0RyaXZlIl0sInBjbG91ZCI6ZmFsc2UsInEiOlsiMjE2MHAiLCIxMDgwcCIsIjcyMHAiXSwiZHluYW1pY1JhbmdlIjpbIlNEUiIsIkhEUiIsIlVua25vd24iXSwic29ydE1vZGUiOiJxdWFsaXR5IiwidGl0bGVfZm9ybWF0IjoiZGVmYXVsdCJ9/manifest.json",
+      "home": "https://hd.plavio.site/configure",
+      "notes": "http sources addon with livetv catalog"
+    },
+     {
+      "name": "yuki",
+      "url": "https://stremio.yukistreams.xyz/p.5XqogOJxQeS62yj-/manifest.json",
+      "home": "https://stremio.yukistreams.xyz/configure",
+      "notes": "http addon with both catalog and sources"
     },
     {
       "name": "meteor",
-      "url": "https://meteorfortheweebs.midnightignite.me/eyJjYWNoZWRPbmx5IjpmYWxzZSwic2tpcFJlbGVhc2VGaWx0ZXIiOnRydWUsInJlbW92ZVRyYXNoIjpmYWxzZSwicmVtb3ZlU2FtcGxlcyI6ZmFsc2UsImFsbG93QWR1bHQiOmZhbHNlLCJleGNsdWRlM0QiOmZhbHNlLCJlbmFibGVTZWFEZXgiOmZhbHNlLCJzaG93WW91ck1lZGlhIjpmYWxzZSwieW91ck1lZGlhTGVnYWN5TW9kZSI6ZmFsc2UsIm1pblNlZWRlcnMiOjAsIm1heFJlc3VsdHMiOjI1LCJtYXhQZXJSZXNvbHV0aW9uIjo1LCJyZXNvbHV0aW9ucyI6WyI3MjBwIiwiNDgwcCJdLCJwcmVmZXJyZWRMYW5ncyI6WyJlbiIsIm11bHRpIl0sImxhbmd1YWdlcyI6W10sImV4Y2x1ZGVkTGFuZ3MiOltdLCJyZXN1bHRGb3JtYXQiOlsidGl0bGUiLCJxdWFsaXR5Iiwic2l6ZSIsImF1ZGlvIl0sImxhbmd1YWdlRm9ybWF0IjoiZmxhZ3MiLCJzb3J0T3JkZXIiOlsiY2FjaGVkIiwic2VhZGV4IiwicmVzb2x1dGlvbiIsInF1YWxpdHkiLCJsYW5ndWFnZSIsIi1zaXplIiwicGFjayIsInNlZWRlcnMiXSwiYWxsb3dQMlAiOnRydWUsImV4Y2x1ZGVkU291cmNlcyI6W119/manifest.json",
-      "home": "http://meteorfortheweebs.midnightignite.me/configure",
-      "notes": "P2P torrent addon. This config blob is broken: languageFormat is an array, so /stream/* returns 401 'invalid session'. Regenerate with languageFormat as a string (\"flags\")."
+      "url": "https://meteorfortheweebs.midnightignite.me/eyJjYWNoZWRPbmx5IjpmYWxzZSwic2tpcFJlbGVhc2VGaWx0ZXIiOnRydWUsInJlbW92ZVRyYXNoIjpmYWxzZSwicmVtb3ZlU2FtcGxlcyI6ZmFsc2UsImFsbG93QWR1bHQiOmZhbHNlLCJleGNsdWRlM0QiOmZhbHNlLCJlbmFibGVTZWFEZXgiOmZhbHNlLCJzaG93WW91ck1lZGlhIjpmYWxzZSwieW91ck1lZGlhTGVnYWN5TW9kZSI6ZmFsc2UsIm1pblNlZWRlcnMiOjAsIm1heFJlc3VsdHMiOjAsIm1heFBlclJlc29sdXRpb24iOjAsInJlc29sdXRpb25zIjpbXSwicHJlZmVycmVkTGFuZ3MiOlsiZW4iLCJtdWx0aSJdLCJsYW5ndWFnZXMiOltdLCJleGNsdWRlZExhbmdzIjpbXSwicmVzdWx0Rm9ybWF0IjpbInRpdGxlIiwicXVhbGl0eSIsInNpemUiLCJhdWRpbyJdLCJsYW5ndWFnZUZvcm1hdCI6ImZsYWdzIiwic29ydE9yZGVyIjpbImNhY2hlZCIsInNlYWRleCIsInJlc29sdXRpb24iLCJxdWFsaXR5IiwibGFuZ3VhZ2UiLCJzZWVkZXJzIiwic2l6ZSIsInBhY2siLCJoZHIiLCJjb2RlYyJdLCJhbGxvd1AyUCI6dHJ1ZSwiZXhjbHVkZWRTb3VyY2VzIjpbXX0/manifest.json",
+      "home": "https://meteorfortheweebs.midnightignite.me/configure",
+      "notes": "P2P torrent addon."
     }
   ]
 }
