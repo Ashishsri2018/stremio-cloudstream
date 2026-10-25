@@ -603,3 +603,11 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   `runTime` seconds. `videos[].available` is parsed but not filtered.
 - 68 JVM tests pass via `streamiolink-tests`. CI run `40160565298` passed and published version 29
   (`builds/plugins.json`).
+
+## 2026-10-25 — Episode runtime units — version 30
+- Episode `runTime` was stored in seconds (`minutes * 60`), but CloudStream's episode card
+  multiplies it by 60 again before formatting (`EpisodeAdapter.kt:329`), so a 44-minute episode
+  showed as `1d 20h 0m`.
+- `StremioProvider.toEpisode` now passes `runtimeMinutes(video.runtime)` directly (minutes), matching
+  CloudStream's de-facto contract and its InternetArchive provider. Episode ratings unchanged.
+- 68 JVM tests pass via `streamiolink-tests`. CI run `40163571764` passed and published version 30.
