@@ -259,7 +259,7 @@ object StremioSettingsDialog {
             TextView(context).apply {
                 text = "Paste the base URL or a manifest.json link of any Stremio addon. " +
                     "Debrid-configured links (e.g. Torrentio with a Real-Debrid key in the URL) " +
-                    "return playable streams; plain torrent addons return magnets which Cloudstream cannot play."
+                    "return playable streams."
                 textSize = 12f
                 setPadding(0, dp(8), 0, dp(8))
             }

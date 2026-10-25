@@ -2,8 +2,9 @@
 
 A [CloudStream 3](https://github.com/recloudstream/cloudstream) plugin that turns any
 [Stremio addon](https://stremio.github.io/stremio-addon-sdk/) ecosystem into a CloudStream provider.
+It supports **movies, series, anime and live TV**, including **torrent/P2P** sources.
 
-- **catalog addon** powers the home page, search and metadata (series episodes included).
+- **catalog addon** powers the home page, search and metadata (series episodes and live TV channels included).
 - **N source addons** are queried in parallel for every play and their streams are merged.
 - **Subtitles** are pulled from any configured addon that declares the `subtitles` resource, plus
   any subtitles embedded per-stream by the stream addons.
@@ -37,6 +38,8 @@ Paste either a base URL (`https://addon.example`) or a full manifest URL
 
 ## What plays
 
+- **Live TV**: `tv`-type catalogs (e.g. Pluto TV, Plavio sports) are shown as single-stream
+  channels. Live playback has no EPG, seek or recording; channel URLs may be time/geo-bound.
 - **Direct HTTP(S) streams**: HLS (`.m3u8`), DASH (`.mpd`) and progressive files (`mp4`/`mkv`/...).
   The kind is detected from the URL/filename (no network probe), so extension-less debrid links
   are handled without extra requests.
@@ -53,6 +56,7 @@ Paste either a base URL (`https://addon.example`) or a full manifest URL
 | Addon | Role | URL |
 |---|---|---|
 | Cinemeta | Catalog + meta | `https://v3-cinemeta.strem.io` |
+| Pluto TV | Live TV catalog + streams | `https://dev.nebulawp.org/stremio/pluto-tv-addon/manifest.json` |
 | Torrentio (Real-Debrid) | Streams | `https://torrentio.strem.fun/realdebrid=YOUR_KEY` |
 | MediaFusion (Debrid) | Streams | your configured manifest URL |
 | OpenSubtitles v3 | Subtitles | `https://opensubtitles-v3.strem.io` |
