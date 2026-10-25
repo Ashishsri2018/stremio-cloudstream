@@ -590,3 +590,16 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 - Verified the `Score` API against the cached CloudStream pre-release stub
   (`/root/iptv/.toolchain/cloudstream-stub/classes.jar`, source documented in its README); AGENTS
   now points at it. 63 JVM tests pass via `streamiolink-tests`. Bumped 27 → 28.
+
+## 2026-10-25 — Richer addon metadata mapping — version 29
+- AIOMetadata/Nuvio send `logo`, `runtime`, `status`, `ageRating`, cast, trailers and episode
+  `rating`/`runtime`; only poster/background/plot/year/tags/`imdbRating` were mapped before.
+- Added DTOs for `app_extras` (`cast` objects, `certification`, `ratings`), `trailers`,
+  `trailerStreams`, and video `rating`/`runtime`/`available`.
+- `StremioMapping.ratingFrom10` now covers `imdbRating`, episode ratings and `app_extras.ratings`;
+  added `runtimeMinutes` (`2h22min`/`142m`/`57min`), `trailerUrl` and `showStateFrom`.
+- Load responses map `logoUrl`, `duration`, `contentRating`, `actors` (app_extras first),
+  `trailers` (trailerStreams then trailers), and series `showStatus`; episodes map `score` and
+  `runTime` seconds. `videos[].available` is parsed but not filtered.
+- 68 JVM tests pass via `streamiolink-tests`. CI run `40160565298` passed and published version 29
+  (`builds/plugins.json`).
