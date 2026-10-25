@@ -562,3 +562,20 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 ## 2026-10-24 — Restore to f878d2a baseline and bump version 26
 - Rolled back all changes after commit `f878d2a` (expand language detection) to restore baseline broad language detection behavior.
 - Bumped plugin version to 26 (`StreamioLink/build.gradle.kts`) so CloudStream replaces installed copies.
+
+## 2026-10-25 — Audio-first language parsing; subtitle lists no longer tagged as audio
+- Live CNC payload for Breaking Bad S2E1 puts `🎧 Audio: …` and `📝 Subtitles: …` on separate
+  lines. The previous whole-text scan tagged subtitle languages as audio, and subtitle-only streams
+  produced fake audio tags.
+- `StremioMapping.streamLanguages` now parses explicit audio lines first (`Audio:` / `Language:` /
+  `🎧` / `🔊`, requiring a separator so "English audio" is not mistaken for a label), cuts at `|`
+  or a subtitle marker, and returns those languages when found. Subtitles never leak into the tag.
+- Only when no audio line exists does it fall back to the release name/filename, skipping
+  subtitle-only lines (`Subtitles:`, `Subs:`, `Hardsub`, `Legendado`, `VOSTFR`, …). `ESub`-suffixed
+  release names are kept, so HdHub/Meteor/Movies4u fallback tags still work.
+- Added locale/dub forms: `ES-LA`/`ESLA`/`eslatam` → Spanish, `PT-BR`/`PTBR` → Portuguese,
+  `Dublado` → Portuguese, `Castellano` → Spanish; `dual|multi audio` → `Multi`.
+- Tests use real CNC/Pengu lines: audio wins over subtitles, subtitle-only → null, Arabic Hardsub →
+  null, ES-LA/PT-BR/dub forms, Movies4u `ESub` fallback. 62 JVM tests pass via `streamiolink-tests`.
+- `known-issues.md` now records that CloudStream's preferred audio language cannot select among
+  separate Stremio links. Bumped 26 → 27.

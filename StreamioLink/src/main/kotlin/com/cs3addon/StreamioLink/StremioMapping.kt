@@ -46,7 +46,23 @@ object StremioMapping {
     private const val MAX_LANGUAGE_TAGS = 3
 
     private val languageTokenRegex = Regex("""\p{IsLatin}+""")
-    private val dualAudioRegex = Regex("""dual[\s\-_.]*audio""", RegexOption.IGNORE_CASE)
+    private val dualAudioRegex = Regex("""(?:dual|multi)[\s\-_.]*audio""", RegexOption.IGNORE_CASE)
+
+    /** Lines that describe subtitles rather than audio; these must never feed audio language tags. */
+    private val subtitleOnlyLineRegex = Regex(
+        """(?i)(?:\bsubtitles?\b|\bsubs?\b|📝|\bhardsubs?\b|\bsoftsubs?\b|\blegendado\b|\bvostfr\b|\bsubbed\b|\bcc\b)"""
+    )
+
+    /** Explicit audio labels only (emoji or a keyword followed by a separator). */
+    private val audioLabelRegex = Regex(
+        """(?i)(?:🎧|🔊|\baudio(?:\s*languages?)?\s*[:\-–—]|\b(?:languages?|lang)\s*[:\-–—])\s*"""
+    )
+
+    /** Locale-style tags that the whole-token alias map cannot see. */
+    private val languageVariantAliases = listOf(
+        Regex("""(?i)\b(?:es[-_.]?la|eslatam)\b""") to "Spanish",
+        Regex("""(?i)\b(?:pt[-_.]?br|ptbr)\b""") to "Portuguese",
+    )
 
     /**
      * Languages surfaced on the link label. Stremio streams carry no language field, so this is
@@ -83,6 +99,7 @@ object StremioMapping {
         "español" to "Spanish",
         "esp" to "Spanish",
         "spa" to "Spanish",
+        "castellano" to "Spanish",
         "french" to "French",
         "francais" to "French",
         "français" to "French",
@@ -99,6 +116,7 @@ object StremioMapping {
         "portugues" to "Portuguese",
         "português" to "Portuguese",
         "por" to "Portuguese",
+        "dublado" to "Portuguese",
         "russian" to "Russian",
         "rus" to "Russian",
         "japanese" to "Japanese",
@@ -600,24 +618,70 @@ object StremioMapping {
      * The Stremio stream object has no language field, so the addons write it into free text:
      * `description` (HdHub: `...Hindi.English...`; PenguPlay: `🎧 Audio: English, Hindi`),
      * `title` (PlavioHD: `480p · Hindi, English`) or `behaviorHints.filename`
-     * (`...Rus.Eng.mkv`). Detected names/codes are canonicalized, deduped (case-insensitively)
-     * and capped at [MAX_LANGUAGE_TAGS]. "Dual audio" is reported as `Multi`.
+     * (`...Rus.Eng.mkv`). Explicit `Audio:`/`Language:`/`🎧`/`🔊` lines are authoritative and
+     * parsed on their own, so subtitle lists (CNC: `📝 Subtitles: Arabic, Czech…`) can never leak
+     * into the audio tag. Only when no audio line is present does detection fall back to the
+     * release name/filename, skipping subtitle-only lines. Detected names/codes are canonicalized,
+     * deduped (case-insensitively) and capped at [MAX_LANGUAGE_TAGS]. "Dual audio" is reported as
+     * `Multi`.
      */
     fun streamLanguages(stream: StremioStream): List<String> {
-        val haystack = listOfNotNull(
+        val fields = listOf(
             stream.name,
             stream.title,
             stream.description,
             stream.behaviorHints?.filename,
-        ).joinToString(" ")
-        if (haystack.isBlank()) return emptyList()
+        )
+        if (fields.all { it.isNullOrBlank() }) return emptyList()
 
-        val found = LinkedHashSet<String>()
-        if (dualAudioRegex.containsMatchIn(haystack)) found.add("Multi")
-        languageTokenRegex.findAll(haystack).forEach { match ->
-            languageAliases[match.value.lowercase()]?.let { found.add(it) }
+        val dualAudio = fields.filterNotNull().any { dualAudioRegex.containsMatchIn(it) }
+        val explicit = explicitAudioLanguages(fields)
+        if (explicit.isNotEmpty()) {
+            val found = LinkedHashSet<String>()
+            if (dualAudio) found.add("Multi")
+            found.addAll(explicit)
+            return found.take(MAX_LANGUAGE_TAGS)
         }
+
+        val fallbackText = fields.filterNotNull()
+            .flatMap { it.lineSequence() }
+            .filterNot { subtitleOnlyLineRegex.containsMatchIn(it) }
+            .joinToString("\n")
+        val found = LinkedHashSet<String>()
+        if (dualAudio) found.add("Multi")
+        collectLanguages(fallbackText, found)
         return found.take(MAX_LANGUAGE_TAGS)
+    }
+
+    /** Languages on explicit audio lines across [fields], ignoring subtitle text. */
+    private fun explicitAudioLanguages(fields: List<String?>): LinkedHashSet<String> {
+        val found = LinkedHashSet<String>()
+        fields.forEach { field ->
+            field?.lineSequence()?.forEach { rawLine ->
+                val line = rawLine.trim()
+                if (line.isEmpty()) return@forEach
+                val label = audioLabelRegex.find(line) ?: return@forEach
+                var tail = line.substring(label.range.last + 1).substringBefore("|")
+                subtitleOnlyLineRegex.find(tail)?.let { tail = tail.substring(0, it.range.first) }
+                collectLanguages(tail, found)
+            }
+        }
+        return found
+    }
+
+    /** Adds canonical language names found in [text] to [found], preserving text order. */
+    private fun collectLanguages(text: String, found: MutableSet<String>) {
+        if (text.isBlank()) return
+        if (dualAudioRegex.containsMatchIn(text)) found.add("Multi")
+
+        val matches = ArrayList<Pair<Int, String>>()
+        languageVariantAliases.forEach { (regex, language) ->
+            regex.findAll(text).forEach { matches.add(it.range.first to language) }
+        }
+        languageTokenRegex.findAll(text).forEach { match ->
+            languageAliases[match.value.lowercase()]?.let { matches.add(match.range.first to it) }
+        }
+        matches.sortedBy { it.first }.forEach { found.add(it.second) }
     }
 
     /** Compact `[Hindi, English]` tag for a stream, or null when no language was detected. */

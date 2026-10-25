@@ -462,6 +462,95 @@ class StremioStreamTest {
     }
 
     @Test
+    fun prefersExplicitAudioOverSubtitleLists() {
+        val cncMobile = StremioStream(
+            name = "🎬CNC Verse Mobile 🧊 1080p • CNCVerse Bridge",
+            title = "📡 Breaking Bad • S02E01\n" +
+                "🏷️ Auto\n" +
+                "🎞️ 1080p · 720p\n" +
+                "🛰️ Source: CNC Verse Mobile • NetflixM\n" +
+                "🎧 Audio: German, English, Spanish, French, +5 more\n" +
+                "📝 Subtitles: Arabic, Czech, Danish, +28 more",
+        )
+        assertEquals(
+            listOf("German", "English", "Spanish"),
+            StremioMapping.streamLanguages(cncMobile)
+        )
+        assertEquals(
+            listOf("Hindi", "English"),
+            StremioMapping.streamLanguages(
+                StremioStream(
+                    description = "📡 Breaking Bad - Seven Thirty-Seven (2008) • S02E01\n" +
+                        "🎞️ 720p • WEB-DL • x264 • MKV • ~1.1 Mbps\n" +
+                        "🛰️ Source: MoviesDrives · PixelDrain\n" +
+                        "💾 400 MB\n" +
+                        "🎧 Audio: Hindi, English",
+                )
+            )
+        )
+        assertNull(
+            StremioMapping.languageTag(
+                StremioStream(
+                    title = "📡 Breaking Bad • S02E01\n" +
+                        "📝 Subtitles: Arabic, Czech, Danish, +28 more"
+                )
+            )
+        )
+        assertNull(
+            StremioMapping.languageTag(
+                StremioStream(title = "🛰️ Source: NetNaija • Arabic Hardsub\n🎞️ 720p • Direct")
+            )
+        )
+    }
+
+    @Test
+    fun detectsDubAndLocaleLanguageLabels() {
+        assertEquals(
+            listOf("Spanish"),
+            StremioMapping.streamLanguages(StremioStream(title = "🛰️ Source: NetNaija • ES-LA Dub"))
+        )
+        assertEquals(
+            listOf("Spanish"),
+            StremioMapping.streamLanguages(StremioStream(title = "NetNaija • esla dub"))
+        )
+        assertEquals(
+            listOf("Portuguese"),
+            StremioMapping.streamLanguages(StremioStream(title = "NetNaija • PT-BR Dub"))
+        )
+        assertEquals(
+            listOf("Portuguese"),
+            StremioMapping.streamLanguages(StremioStream(title = "NetNaija • ptbr"))
+        )
+        assertEquals(
+            listOf("Portuguese"),
+            StremioMapping.streamLanguages(StremioStream(title = "Filme Dublado"))
+        )
+        assertEquals(
+            listOf("Spanish"),
+            StremioMapping.streamLanguages(StremioStream(title = "Audio: Castellano"))
+        )
+        assertEquals(
+            listOf("English", "Hindi"),
+            StremioMapping.streamLanguages(StremioStream(title = "English audio, Hindi"))
+        )
+        assertEquals(
+            listOf("Multi", "Hindi"),
+            StremioMapping.streamLanguages(StremioStream(title = "Movie Multi Audio (Hindi)"))
+        )
+        assertEquals(
+            listOf("Hindi", "English"),
+            StremioMapping.streamLanguages(
+                StremioStream(
+                    title = "🏷️ (Movies4u.Foo).Breaking.Bad.S02E01.720p.BluRay.Hindi.ORG.2.0-English.ESub.x264.mkv[399.72 MB]"
+                )
+            )
+        )
+        assertNull(StremioMapping.languageTag(StremioStream(title = "Filme Legendado")))
+        assertNull(StremioMapping.languageTag(StremioStream(title = "Film VOSTFR")))
+        assertNull(StremioMapping.languageTag(StremioStream(title = "🙊 No included subtitles")))
+    }
+
+    @Test
     fun dedupesLanguageCodesAndNames() {
         assertEquals(
             listOf("English", "Hindi"),

@@ -41,6 +41,11 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 - **No cross-addon dedup or liveness filtering**: duplicate mirrors and dead links are left to the
   addon servers; a dead link can appear first. `MAX_LINKS = 500` is only an emission ceiling.
 - **`externalUrl` streams are skipped** (not playable through the provider pipeline).
+- **Preferred audio language cannot select Stremio links**: CloudStream's player preference matches
+  language metadata on real media tracks (`Format.language`); `ExtractorLink` has no audio-language
+  field and `AudioFile` (separate audio URLs) carries only `url`/`headers`. Stremio returns one
+  complete video per language, so the plugin can only label links (`[Hindi, English]`), not make
+  CloudStream auto-pick one. A plugin-side preferred-language link filter/sort would be needed.
 
 ## Live TV
 
