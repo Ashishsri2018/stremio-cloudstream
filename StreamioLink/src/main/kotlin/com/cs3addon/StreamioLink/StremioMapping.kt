@@ -702,6 +702,13 @@ object StremioMapping {
         releaseInfo?.let { yearRegex.find(it)?.value?.toIntOrNull() }
 
     /**
+     * IMDb rating from a Stremio `imdbRating` value (catalogs and meta send it as a string).
+     * Returns null when absent, unparseable or outside 0..10; a 0 means "not rated" and is hidden.
+     */
+    fun ratingFromImdb(imdbRating: String?): Double? =
+        imdbRating?.trim()?.toDoubleOrNull()?.takeIf { it > 0.0 && it <= 10.0 }
+
+    /**
      * Episode label for a Stremio video. The protocol uses `name`, but some addons
      * (e.g. Nuvio's TMDB catalog) put the episode title in `title` instead.
      */

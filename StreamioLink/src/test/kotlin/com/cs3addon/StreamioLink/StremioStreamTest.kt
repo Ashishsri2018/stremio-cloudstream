@@ -593,6 +593,18 @@ class StremioStreamTest {
     }
 
     @Test
+    fun parsesImdbRating() {
+        assertEquals(9.3, StremioMapping.ratingFromImdb("9.3"))
+        assertEquals(7.6, StremioMapping.ratingFromImdb(" 7.6 "))
+        assertEquals(10.0, StremioMapping.ratingFromImdb("10"))
+        assertNull(StremioMapping.ratingFromImdb("0"))
+        assertNull(StremioMapping.ratingFromImdb("10.1"))
+        assertNull(StremioMapping.ratingFromImdb("N/A"))
+        assertNull(StremioMapping.ratingFromImdb(""))
+        assertNull(StremioMapping.ratingFromImdb(null))
+    }
+
+    @Test
     fun parsesMetaDetailsWithEpisodes() {
         val meta = StremioMapping.parseMeta(
             """

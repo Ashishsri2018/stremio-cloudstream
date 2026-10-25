@@ -79,6 +79,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    Live `tv` channels (Pluto TV and similar) are the exception: their meta carries no `videos`, so
    `StremioMapping.usesEpisodes` (series and not `LIVE_MEDIA_TYPES`) makes each channel a single
    movie-like item whose play action hits `/stream/tv/{id}.json` for one endless HLS URL.
+   Ratings: catalog previews and metas expose `imdbRating`; `StremioMapping.ratingFromImdb` parses
+   it (0..10, null when absent/unrated) and both home/search cards and load responses map it to
+   CloudStream's `Score`, so cards and the detail page show the addon's IMDb score. Card badges
+   additionally depend on CloudStream's "Show ratings" setting.
 4. Links: all enabled source addons (plus enabled catalog addons with `useAsSource`) declaring a
    `stream` resource and matching type/idPrefixes are queried
    in parallel **per addon** (`supervisorScope`, so one addon's failure cannot cancel the others) —

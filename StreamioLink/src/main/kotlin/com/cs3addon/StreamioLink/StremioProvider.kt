@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageData
 import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
@@ -255,14 +256,20 @@ class StremioProvider : MainAPI() {
             newTvSeriesSearchResponse(title, payload) {
                 this.posterUrl = meta.poster
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
+                this.score = imdbScore(meta.imdbRating)
             }
         } else {
             newMovieSearchResponse(title, payload) {
                 this.posterUrl = meta.poster
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
+                this.score = imdbScore(meta.imdbRating)
             }
         }
     }
+
+    /** CloudStream rating (0..10) from the addon's `imdbRating`, or null when unavailable. */
+    private fun imdbScore(imdbRating: String?): Score? =
+        Score.from10(StremioMapping.ratingFromImdb(imdbRating))
 
     // ---------------------------------------------------------------- search
 
@@ -329,6 +336,7 @@ class StremioProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
+                this.score = imdbScore(meta.imdbRating)
                 this.tags = meta.genres
             }
         } else {
@@ -337,6 +345,7 @@ class StremioProvider : MainAPI() {
                 this.backgroundPosterUrl = meta.background
                 this.plot = meta.description
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
+                this.score = imdbScore(meta.imdbRating)
                 this.tags = meta.genres
             }
         }
