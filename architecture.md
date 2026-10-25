@@ -87,8 +87,9 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    `trailerStreams`/`trailers` → `trailers`, and series `status` → `showStatus`
    (`Ended`/`Released`/`Canceled` → `Completed`; `Continuing`/`Returning Series`/`In Production`/
    `Planned` → `Ongoing`). Episode `rating` → `Episode.score` and `runtime` → `Episode.runTime`
-   (seconds). `videos[].available` is parsed but not filtered; season posters have no CloudStream
-   field. Card badges additionally depend on CloudStream's "Show ratings" setting.
+   (minutes; CloudStream's episode UI multiplies by 60 before formatting). `videos[].available` is
+   parsed but not filtered; season posters have no CloudStream field. Card badges additionally
+   depend on CloudStream's "Show ratings" setting.
 4. Links: all enabled source addons (plus enabled catalog addons with `useAsSource`) declaring a
    `stream` resource and matching type/idPrefixes are queried
    in parallel **per addon** (`supervisorScope`, so one addon's failure cannot cancel the others) —

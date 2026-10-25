@@ -437,7 +437,7 @@ class StremioProvider : MainAPI() {
             this.posterUrl = video.thumbnail
             this.description = video.overview
             this.score = scoreFrom10(video.rating)
-            this.runTime = StremioMapping.runtimeMinutes(video.runtime)?.times(60)
+            this.runTime = StremioMapping.runtimeMinutes(video.runtime)
             video.released?.let { addDate(it) }
         }
     }
