@@ -176,6 +176,73 @@ class StremioManifestTest {
     }
 
     @Test
+    fun otherCatalogsAreSupportedAndSearchable() {
+        assertTrue(StremioMapping.isSupportedMediaType("other"))
+        assertTrue(StremioMapping.isSupportedMediaType("Other"))
+
+        val vod = StremioCatalog(type = "other", id = "vod", name = "VOD")
+        assertTrue(StremioMapping.catalogCanLoadHome(vod))
+        assertFalse(StremioMapping.catalogSupportsSearch(vod))
+
+        val searchable = StremioCatalog(
+            type = "other",
+            id = "vod-search",
+            name = "VOD Search",
+            extra = listOf(StremioExtra(name = "search", isRequired = false)),
+        )
+        assertTrue(StremioMapping.catalogSupportsSearch(searchable))
+
+        val searchOnly = StremioCatalog(
+            type = "other",
+            id = "vod-search-only",
+            name = "VOD Search Only",
+            extra = listOf(StremioExtra(name = "search", isRequired = true)),
+        )
+        assertFalse(StremioMapping.catalogCanLoadHome(searchOnly))
+    }
+
+    @Test
+    fun otherSeriesUseEpisodesOnlyWithNumberedVideos() {
+        assertTrue(
+            StremioMapping.usesEpisodes(
+                "other",
+                listOf(StremioVideo(id = "cnc:ep1", season = 1, episode = 1)),
+            )
+        )
+        assertTrue(
+            StremioMapping.usesEpisodes(
+                "OTHER",
+                listOf(StremioVideo(id = "cnc:ep1", season = 1)),
+            )
+        )
+        assertFalse(StremioMapping.usesEpisodes("other", emptyList()))
+        assertFalse(StremioMapping.usesEpisodes("other", null))
+        assertFalse(StremioMapping.usesEpisodes("other", listOf(StremioVideo(id = "cnc:movie"))))
+        assertFalse(
+            StremioMapping.usesEpisodes(
+                "other",
+                listOf(StremioVideo(id = "cnc:movie", season = 0, episode = 0)),
+            )
+        )
+        assertFalse(
+            StremioMapping.usesEpisodes(
+                "other",
+                listOf(StremioVideo(id = null, season = 1, episode = 1)),
+            )
+        )
+    }
+
+    @Test
+    fun otherInferenceDoesNotChangeExistingMediaTypes() {
+        val numbered = listOf(StremioVideo(id = "x", season = 1, episode = 1))
+        assertFalse(StremioMapping.usesEpisodes("movie", numbered))
+        assertFalse(StremioMapping.usesEpisodes("anime", numbered))
+        assertFalse(StremioMapping.usesEpisodes("tv", numbered))
+        assertTrue(StremioMapping.usesEpisodes("series", emptyList()))
+        assertTrue(StremioMapping.usesEpisodes("anime.series", emptyList()))
+    }
+
+    @Test
     fun detectsSearchableCatalogs() {
         val byId = catalogs.associateBy { it.id }
         assertTrue(StremioMapping.catalogSupportsSearch(byId.getValue("searchable")))

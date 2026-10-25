@@ -333,7 +333,7 @@ class StremioProvider : MainAPI() {
         // videos and are movie-like single streams.
         val type = meta.type?.takeIf { it.isNotBlank() } ?: payload.type
 
-        return if (StremioMapping.usesEpisodes(type)) {
+        return if (StremioMapping.usesEpisodes(type, meta.videos)) {
             val episodes = meta.videos.orEmpty().mapNotNull { toEpisode(type, payload.base, it) }
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = meta.poster
@@ -421,7 +421,7 @@ class StremioProvider : MainAPI() {
             // Some addons return a stub meta (name == id, no videos) for ids they only
             // stream; skip those instead of breaking a series that a later addon knows.
             val hasTitle = !meta.name.isNullOrBlank()
-            val hasEpisodes = !StremioMapping.usesEpisodes(meta.type ?: payload.type) ||
+            val hasEpisodes = !StremioMapping.usesEpisodes(meta.type ?: payload.type, meta.videos) ||
                 !meta.videos.isNullOrEmpty()
             if (hasTitle && hasEpisodes) return meta
         }

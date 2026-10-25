@@ -30,9 +30,9 @@
     },
     {
       "name": "cnc",
-      "url": "https://cncverse.dpdns.org/u/p_l0uq0xtenbo7/manifest.json",
+      "url": "https://cncverse.dpdns.org/u/p_gwvcivqpye91/manifest.json",
       "home": "https://cncverse.dpdns.org/",
-      "notes": "CNCVerse Bridge. Many links; ~1/3 dead (404 / connection refused / HTML). Source-only (all catalogs are type other/tv)."
+      "notes": "CNCVerse Bridge. 18 other (VOD) + 12 tv catalogs; other and tv both participate in home/search. Many links; ~1/3 dead (404 / connection refused / HTML); 9/18 sampled VOD catalogs were streamless; skip is ignored."
     },
     {
       "name": "playvio",

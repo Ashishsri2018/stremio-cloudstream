@@ -53,6 +53,8 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 - Pluto `tv/pluto` has ~1561 channels and does not support `skip`, so that row cannot paginate.
 - Adding `tv` to the supported types also surfaces another catalog addon's `tv` rows (e.g.
   CNCVerse) when it is used as a catalog addon.
+- CNCVerse `tv` catalogs advertise `skip` but ignore it (JioTV repeats 1176 items, PlayZ repeats
+  105), so load-more duplicates the first page.
 - Pluto HLS URLs are time- and geo-bound; they are regenerated per stream request.
 
 ## Provider / settings
@@ -71,13 +73,18 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 - **Eager home rows**: CloudStream calls `getMainPage(1, null)` once and renders every row, so all
   catalog addons are fetched on the first home load; lazy rows are impossible through the API.
   Requests are bounded by a semaphore (6).
+- **`other` catalogs are global**: any configured catalog addon's `other` rows now appear on home
+  and, for the primary addon, in search. This is additive; CNCVerse alone adds 18 VOD rows.
 
 ## Addon-side issues (not plugin bugs)
 
 - **Cinejoy**: some streams end in upstream HTTP 500; addons that serve expired signed URLs fail
   after a while.
-- **CNCVerse**: many dead links (404/connection refused/HTML), occasional literal-space URLs
-  (guarded by `isPlayableStreamUrl`), and partial results until its server-side cache warms.
+- **CNCVerse**: its 18 `other` VOD catalogs are surfaced alongside the 12 `tv` rows; sampled VOD
+  catalogs were often streamless (9/18 returned no links for their first item), and `skip` is
+  ignored, so load-more repeats. Many dead links (404/connection refused/HTML), occasional
+  literal-space URLs (guarded by `isPlayableStreamUrl`), and partial results until its
+  server-side cache warms.
 - **Pengu**: ~8 s redirect is paid at playback.
 - **Plavio**: `/meta` is a stub for VOD ids (name = id, no videos; plugin skips it and falls back)
   and `subtitles` rejects path extras (plugin retries the plain URL). The Vidzee HLS for

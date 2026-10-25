@@ -611,3 +611,21 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 - `StremioProvider.toEpisode` now passes `runtimeMinutes(video.runtime)` directly (minutes), matching
   CloudStream's de-facto contract and its InternetArchive provider. Episode ratings unchanged.
 - 68 JVM tests pass via `streamiolink-tests`. CI run `40163571764` passed and published version 30.
+
+## 2026-10-25 — `other` VOD catalogs (CNCVerse) — version 31
+- CNCVerse's 30 catalogs are 18 `other` VOD + 12 `tv`; only the `tv` rows were loadable because
+  `other` was excluded from `SUPPORTED_MEDIA_TYPES`. Adding `other` surfaces the VOD rows and makes
+  them searchable when CNCVerse is the primary catalog addon (additional catalog addons remain
+  home-only, as before).
+- CNCVerse `other` metas always declare `type: "other"`; movie metas have no `videos`, series metas
+  do (Punisher 28, Black Clover 170). New `usesEpisodes(type, videos)` delegates to the unchanged
+  one-arg form, then only for `other` requires a non-blank video id and a positive season/episode.
+  `movie`/`series`/`anime`/`tv` behavior is untouched, and movie-like `other` items stay movies.
+- Episode payloads keep type `other`: CNCVerse ignores the type path for `cnc:` ids and its stream
+  resource falls back to the manifest types, so its own links still resolve. Normalizing to
+  `series` would only add useless source queries for ids other addons do not know.
+- Sampled VOD catalogs: 9/18 returned no streams for their first item; the 9 with links were
+  playable (4KHDHUB, HDHub4U, Movies4u, VegaMovies, Rogmovies, CastleTV, MovieBoxIN, AniPM,
+  ReANIME). Both VOD and TV catalogs advertise `skip` but ignore it, so load-more repeats.
+- 71 JVM tests pass via `streamiolink-tests`, including regression coverage for existing media
+  types and negative `other` cases. Bumped 30 → 31.

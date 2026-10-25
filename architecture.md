@@ -38,13 +38,14 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 ## Data Flow
 1. Home: each catalog addon's manifest → loadable catalogs → `/catalog/{type}/{id}.json` → rows.
    A catalog is loadable when its type is `movie`, `series`, `anime`, `anime.movie`,
-   `anime.series` or `tv` and every required extra can be satisfied from the manifest itself
-   (`StremioMapping.catalogPresetExtra`: its `default`, else the first `options` entry).
+   `anime.series`, `tv` or `other` and every required extra can be satisfied from the manifest
+   itself (`StremioMapping.catalogPresetExtra`: its `default`, else the first `options` entry).
    `search`/`similar`/`calendarVideosIds` therefore stay off the home page. The resolved preset is
    sent as a path extra (`genre=Fall%202026`), so genre-locked catalogs (TMDB By Year, By Language,
    TVDB Genres, MAL Seasons/Studios) still get rows fixed to that one value; `showInHome:false`
    catalogs are surfaced too because CloudStream has no Discover/genre picker. Titles come from
-   `StremioMapping.catalogTitles`, which appends `(Movies)`/`(Series)` when a name is shared —
+   `StremioMapping.catalogTitles`, which appends `(Movies)`/`(Series)`/`(Other)` when a name is
+   shared —
    CloudStream keys home rows by title (`HomeViewModel.expandable[list.name]`), so identical
    movie/series names would otherwise collapse and leave only the later (series) row.
    With multiple catalog addons the primary addon's rows come first, then each additional addon's
@@ -62,8 +63,9 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    stuck catalog. (Lazy row loading is **not** possible: CloudStream's `HomeViewModel.load()` calls
    `getMainPage(1, null)` once and renders every returned row; expansion only paginates existing rows.)
 2. Search: the primary catalog addon's search-capable catalogs (including
-   `anime.series`/`anime.movie`) → `/catalog/{type}/{id}/search=...json`, keeping any preset genre
-   extra (falls back to the metadata addon). Additional catalog addons only contribute home rows.
+   `anime.series`/`anime.movie` and `other`) → `/catalog/{type}/{id}/search=...json`, keeping any
+   preset genre extra (falls back to the metadata addon). Additional catalog addons only contribute
+   home rows.
    Quick search is **not** implemented: `hasQuickSearch` is left at its default `false`, so the
    single-provider quick-search screen (reached from the home search icon) searches on submit via the
    normal `search()` path instead of on every keystroke. Advertising it without overriding
@@ -75,7 +77,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    videos / a name equal to the id) are skipped so the next addon can answer: Plavio's `/meta` is a
    stub for VOD ids but complete for live channels. The response shape follows `meta.type` (falling
    back to the payload type), so an `anime` catalog item that resolves to a series keeps its episode
-   list and its episode links use the series type.
+   list and its episode links use the series type. `other` metas are common in VOD bridge addons
+   such as CNCVerse: they stay movie-like unless their `videos` contain a numbered episode with an
+   id, in which case `StremioMapping.usesEpisodes(type, videos)` loads a series. The episode payload
+   keeps `other`, so the bridge's own stream endpoint is used.
    Live `tv` channels (Pluto TV and similar) are the exception: their meta carries no `videos`, so
    `StremioMapping.usesEpisodes` (series and not `LIVE_MEDIA_TYPES`) makes each channel a single
    movie-like item whose play action hits `/stream/tv/{id}.json` for one endless HLS URL.

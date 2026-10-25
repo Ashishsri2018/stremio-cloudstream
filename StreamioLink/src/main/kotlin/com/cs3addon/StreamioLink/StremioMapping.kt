@@ -15,9 +15,11 @@ object StremioMapping {
     /**
      * Catalog types that can be mapped onto Cloudstream. `anime` catalogs carry the same
      * movie/series metas as the others (their items declare `type`), so they are loadable too;
-     * excluding them dropped whole rows from addons such as AIOMetadata.
+     * excluding them dropped whole rows from addons such as AIOMetadata. `other` is used by
+     * VOD bridge addons such as CNCVerse.
      */
-    val SUPPORTED_MEDIA_TYPES = setOf("movie", "series", "anime", "anime.movie", "anime.series", "tv")
+    val SUPPORTED_MEDIA_TYPES =
+        setOf("movie", "series", "anime", "anime.movie", "anime.series", "tv", "other")
 
     /**
      * Live-channel types. A `tv` meta carries no `videos`; it is a single endless stream (Pluto TV
@@ -320,6 +322,15 @@ object StremioMapping {
      * single-stream items, so they are excluded even though [isSeriesType] matches `tv`.
      */
     fun usesEpisodes(type: String?): Boolean = isSeriesType(type) && !isLiveType(type)
+
+    fun usesEpisodes(type: String?, videos: List<StremioVideo>?): Boolean {
+        if (usesEpisodes(type)) return true
+        if (type?.trim()?.lowercase() != "other") return false
+        return videos.orEmpty().any { video ->
+            !video.id.isNullOrBlank() &&
+                ((video.season ?: 0) > 0 || (video.episode ?: 0) > 0)
+        }
+    }
 
     /**
      * Value for the catalog's required extras, as a protocol path extra (`genre=Fall%202026`).
