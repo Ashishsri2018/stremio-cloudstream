@@ -37,6 +37,8 @@ object StremioMapping {
     private val manifestSuffixRegex = Regex("""/manifest\.json/?$""", RegexOption.IGNORE_CASE)
     private val videoFileRegex = Regex("""\.(mp4|mkv|webm|avi|mov|m4v|flv)(?![0-9a-z])""")
     private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
+    private val runtimeHoursRegex = Regex("""(\d+)\s*h""", RegexOption.IGNORE_CASE)
+    private val runtimeMinutesRegex = Regex("""(\d+)\s*m(?:in)?""", RegexOption.IGNORE_CASE)
     private val sentinelStreamUrlRegex = Regex("""/stream-errors/""", RegexOption.IGNORE_CASE)
     private val healthEndpointUrlRegex = Regex("""/healthz?(?:[?#]|$)""", RegexOption.IGNORE_CASE)
     private val whitespaceRegex = Regex("""\s+""")
@@ -702,11 +704,44 @@ object StremioMapping {
         releaseInfo?.let { yearRegex.find(it)?.value?.toIntOrNull() }
 
     /**
-     * IMDb rating from a Stremio `imdbRating` value (catalogs and meta send it as a string).
-     * Returns null when absent, unparseable or outside 0..10; a 0 means "not rated" and is hidden.
+     * A 0..10 rating from a Stremio value (`imdbRating`, episode `rating`, `app_extras.ratings`).
+     * Returns null when absent, unparseable or outside the range; 0 means "not rated".
      */
-    fun ratingFromImdb(imdbRating: String?): Double? =
-        imdbRating?.trim()?.toDoubleOrNull()?.takeIf { it > 0.0 && it <= 10.0 }
+    fun ratingFrom10(value: String?): Double? =
+        value?.trim()?.toDoubleOrNull()?.takeIf { it > 0.0 && it <= 10.0 }
+
+    /**
+     * Runtime in minutes from the formats addons use (`2h22min`, `142m`, `57min`, `45 min`).
+     * Returns null when absent or unparseable.
+     */
+    fun runtimeMinutes(runtime: String?): Int? {
+        val text = runtime?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val hours = runtimeHoursRegex.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val minutes = runtimeMinutesRegex.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val total = hours * 60 + minutes
+        if (total > 0) return total
+        return text.toIntOrNull()?.takeIf { it > 0 }
+    }
+
+    /** YouTube trailer URL from a trailer id, or the original URL when the addon already sent one. */
+    fun trailerUrl(idOrUrl: String?): String? {
+        val value = idOrUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return if (value.startsWith("http://") || value.startsWith("https://")) {
+            value
+        } else {
+            "https://www.youtube.com/watch?v=$value"
+        }
+    }
+
+    enum class ShowState { Completed, Ongoing }
+
+    /** Maps Stremio/TMDB/TVDB status strings onto CloudStream's two-state show status. */
+    fun showStateFrom(status: String?): ShowState? = when (status?.trim()?.lowercase()) {
+        "ended", "released", "canceled", "cancelled" -> ShowState.Completed
+        "continuing", "returning series", "in production", "planned", "upcoming", "airing" ->
+            ShowState.Ongoing
+        else -> null
+    }
 
     /**
      * Episode label for a Stremio video. The protocol uses `name`, but some addons

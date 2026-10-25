@@ -593,15 +593,58 @@ class StremioStreamTest {
     }
 
     @Test
-    fun parsesImdbRating() {
-        assertEquals(9.3, StremioMapping.ratingFromImdb("9.3"))
-        assertEquals(7.6, StremioMapping.ratingFromImdb(" 7.6 "))
-        assertEquals(10.0, StremioMapping.ratingFromImdb("10"))
-        assertNull(StremioMapping.ratingFromImdb("0"))
-        assertNull(StremioMapping.ratingFromImdb("10.1"))
-        assertNull(StremioMapping.ratingFromImdb("N/A"))
-        assertNull(StremioMapping.ratingFromImdb(""))
-        assertNull(StremioMapping.ratingFromImdb(null))
+    fun parsesTenPointRatings() {
+        assertEquals(9.3, StremioMapping.ratingFrom10("9.3"))
+        assertEquals(7.6, StremioMapping.ratingFrom10(" 7.6 "))
+        assertEquals(10.0, StremioMapping.ratingFrom10("10"))
+        assertNull(StremioMapping.ratingFrom10("0"))
+        assertNull(StremioMapping.ratingFrom10("10.1"))
+        assertNull(StremioMapping.ratingFrom10("N/A"))
+        assertNull(StremioMapping.ratingFrom10(""))
+        assertNull(StremioMapping.ratingFrom10(null))
+    }
+
+    @Test
+    fun parsesRuntimeFormats() {
+        assertEquals(142, StremioMapping.runtimeMinutes("2h22min"))
+        assertEquals(142, StremioMapping.runtimeMinutes("142m"))
+        assertEquals(57, StremioMapping.runtimeMinutes("57min"))
+        assertEquals(62, StremioMapping.runtimeMinutes("1h2min"))
+        assertEquals(45, StremioMapping.runtimeMinutes("45 min"))
+        assertEquals(120, StremioMapping.runtimeMinutes("120"))
+        assertEquals(60, StremioMapping.runtimeMinutes("1h"))
+        assertNull(StremioMapping.runtimeMinutes("0"))
+        assertNull(StremioMapping.runtimeMinutes("N/A"))
+        assertNull(StremioMapping.runtimeMinutes(""))
+        assertNull(StremioMapping.runtimeMinutes(null))
+    }
+
+    @Test
+    fun buildsTrailerUrls() {
+        assertEquals(
+            "https://www.youtube.com/watch?v=PLl99DlL6b4",
+            StremioMapping.trailerUrl("PLl99DlL6b4")
+        )
+        assertEquals("https://www.youtube.com/watch?v=abc", StremioMapping.trailerUrl(" abc "))
+        assertEquals(
+            "https://example.com/trailer.mp4",
+            StremioMapping.trailerUrl("https://example.com/trailer.mp4")
+        )
+        assertNull(StremioMapping.trailerUrl(""))
+        assertNull(StremioMapping.trailerUrl(null))
+    }
+
+    @Test
+    fun mapsShowStatusStrings() {
+        assertEquals(StremioMapping.ShowState.Completed, StremioMapping.showStateFrom("Ended"))
+        assertEquals(StremioMapping.ShowState.Completed, StremioMapping.showStateFrom("Released"))
+        assertEquals(StremioMapping.ShowState.Completed, StremioMapping.showStateFrom("Canceled"))
+        assertEquals(StremioMapping.ShowState.Ongoing, StremioMapping.showStateFrom("Continuing"))
+        assertEquals(StremioMapping.ShowState.Ongoing, StremioMapping.showStateFrom("Returning Series"))
+        assertEquals(StremioMapping.ShowState.Ongoing, StremioMapping.showStateFrom("In Production"))
+        assertEquals(StremioMapping.ShowState.Ongoing, StremioMapping.showStateFrom("Planned"))
+        assertNull(StremioMapping.showStateFrom("Unknown"))
+        assertNull(StremioMapping.showStateFrom(null))
     }
 
     @Test
@@ -631,6 +674,86 @@ class StremioStreamTest {
         assertEquals(1, meta?.videos?.first()?.season)
         assertEquals(1, meta?.videos?.first()?.episode)
         assertEquals("2019-04-01", meta?.videos?.first()?.released)
+    }
+
+    @Test
+    fun parsesAiometadataMetadata() {
+        val meta = StremioMapping.parseMeta(
+            """
+            {
+              "meta": {
+                "id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "logo": "https://img/logo.png",
+                "runtime": "48min",
+                "status": "Ended",
+                "app_extras": {
+                  "certification": "TV-MA",
+                  "cast": [
+                    { "name": "Bryan Cranston", "character": "Walter White",
+                      "photo": "https://img/bryan.jpg" }
+                  ]
+                },
+                "videos": [
+                  { "id": "tt0903747:1:1", "title": "Pilot", "season": 1, "episode": 1,
+                    "runtime": "59min", "available": true }
+                ]
+              }
+            }
+            """.trimIndent()
+        )
+        assertEquals("https://img/logo.png", meta?.logo)
+        assertEquals("48min", meta?.runtime)
+        assertEquals("Ended", meta?.status)
+        assertEquals("TV-MA", meta?.appExtras?.certification)
+        assertEquals("Bryan Cranston", meta?.appExtras?.cast?.first()?.name)
+        assertEquals("Walter White", meta?.appExtras?.cast?.first()?.character)
+        assertEquals("https://img/bryan.jpg", meta?.appExtras?.cast?.first()?.photo)
+        assertEquals("59min", meta?.videos?.first()?.runtime)
+        assertEquals(true, meta?.videos?.first()?.available)
+    }
+
+    @Test
+    fun parsesNuvioMetadata() {
+        val meta = StremioMapping.parseMeta(
+            """
+            {
+              "meta": {
+                "id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "status": "Ended",
+                "ageRating": "TV-MA",
+                "cast": ["Bryan Cranston", "Aaron Paul"],
+                "app_extras": {
+                  "certification": "TV-MA",
+                  "ratings": {
+                    "imdb": { "rating": "9.5", "votes": 2695979 },
+                    "tmdb": { "rating": "9.0", "votes": 18945 }
+                  }
+                },
+                "trailers": [
+                  { "source": "VFkjBy2b50Q", "type": "Trailer" }
+                ],
+                "videos": [
+                  { "id": "tt0903747:1:1", "title": "Pilot", "season": 1, "episode": 1,
+                    "rating": "8.5", "runtime": "59min", "available": true }
+                ]
+              }
+            }
+            """.trimIndent()
+        )
+        assertEquals("Ended", meta?.status)
+        assertEquals("TV-MA", meta?.ageRating)
+        assertEquals(listOf("Bryan Cranston", "Aaron Paul"), meta?.cast)
+        assertEquals("9.5", meta?.appExtras?.ratings?.imdb?.rating)
+        assertEquals(2695979L, meta?.appExtras?.ratings?.imdb?.votes)
+        assertEquals("9.0", meta?.appExtras?.ratings?.tmdb?.rating)
+        assertEquals("VFkjBy2b50Q", meta?.trailers?.first()?.source)
+        assertEquals("8.5", meta?.videos?.first()?.rating)
+        assertEquals("59min", meta?.videos?.first()?.runtime)
+        assertEquals(true, meta?.videos?.first()?.available)
     }
 
     @Test

@@ -79,8 +79,55 @@ data class StremioMetaDetails(
     @JsonProperty("imdbRating") val imdbRating: String? = null,
     @JsonProperty("genres") val genres: List<String>? = null,
     @JsonProperty("runtime") val runtime: String? = null,
+    @JsonProperty("status") val status: String? = null,
+    @JsonProperty("ageRating") val ageRating: String? = null,
     @JsonProperty("cast") val cast: List<String>? = null,
+    /** AIOMetadata/Nuvio extension carrying cast objects, certifications and extra ratings. */
+    @JsonProperty("app_extras") val appExtras: StremioAppExtras? = null,
+    @JsonProperty("trailers") val trailers: List<StremioTrailer>? = null,
+    @JsonProperty("trailerStreams") val trailerStreams: List<StremioTrailerStream>? = null,
     @JsonProperty("videos") val videos: List<StremioVideo>? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StremioAppExtras(
+    @JsonProperty("cast") val cast: List<StremioCastMember>? = null,
+    @JsonProperty("certification") val certification: String? = null,
+    @JsonProperty("ratings") val ratings: StremioRatings? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StremioCastMember(
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("character") val character: String? = null,
+    @JsonProperty("photo") val photo: String? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StremioRatings(
+    @JsonProperty("imdb") val imdb: StremioRatingSource? = null,
+    @JsonProperty("tmdb") val tmdb: StremioRatingSource? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StremioRatingSource(
+    @JsonProperty("rating") val rating: String? = null,
+    @JsonProperty("votes") val votes: Long? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StremioTrailer(
+    @JsonProperty("source") val source: String? = null,
+    @JsonProperty("ytId") val ytId: String? = null,
+    @JsonProperty("type") val type: String? = null,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("lang") val lang: String? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StremioTrailerStream(
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("ytId") val ytId: String? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -95,6 +142,9 @@ data class StremioVideo(
     @JsonProperty("thumbnail") val thumbnail: String? = null,
     @JsonProperty("released") val released: String? = null,
     @JsonProperty("overview") val overview: String? = null,
+    @JsonProperty("rating") val rating: String? = null,
+    @JsonProperty("runtime") val runtime: String? = null,
+    @JsonProperty("available") val available: Boolean? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

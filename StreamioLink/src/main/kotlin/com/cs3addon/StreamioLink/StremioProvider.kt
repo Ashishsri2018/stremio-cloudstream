@@ -1,6 +1,8 @@
 package com.cs3addon.StreamioLink
 
 import com.lagradost.api.Log
+import com.lagradost.cloudstream3.Actor
+import com.lagradost.cloudstream3.ActorData
 import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
@@ -10,7 +12,9 @@ import com.lagradost.cloudstream3.MainPageData
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.ShowStatus
 import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.TrailerData
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.newEpisode
@@ -256,20 +260,20 @@ class StremioProvider : MainAPI() {
             newTvSeriesSearchResponse(title, payload) {
                 this.posterUrl = meta.poster
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
-                this.score = imdbScore(meta.imdbRating)
+                this.score = scoreFrom10(meta.imdbRating)
             }
         } else {
             newMovieSearchResponse(title, payload) {
                 this.posterUrl = meta.poster
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
-                this.score = imdbScore(meta.imdbRating)
+                this.score = scoreFrom10(meta.imdbRating)
             }
         }
     }
 
-    /** CloudStream rating (0..10) from the addon's `imdbRating`, or null when unavailable. */
-    private fun imdbScore(imdbRating: String?): Score? =
-        Score.from10(StremioMapping.ratingFromImdb(imdbRating))
+    /** CloudStream rating (0..10) from an addon rating string, or null when unavailable. */
+    private fun scoreFrom10(value: String?): Score? =
+        Score.from10(StremioMapping.ratingFrom10(value))
 
     // ---------------------------------------------------------------- search
 
@@ -334,21 +338,74 @@ class StremioProvider : MainAPI() {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = meta.poster
                 this.backgroundPosterUrl = meta.background
+                this.logoUrl = meta.logo
                 this.plot = meta.description
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
-                this.score = imdbScore(meta.imdbRating)
+                this.duration = StremioMapping.runtimeMinutes(meta.runtime)
+                this.score = scoreFromMeta(meta)
                 this.tags = meta.genres
+                this.contentRating = contentRatingFrom(meta)
+                this.actors = actorsFrom(meta)
+                this.trailers = trailersFrom(meta)
+                this.showStatus = when (StremioMapping.showStateFrom(meta.status)) {
+                    StremioMapping.ShowState.Completed -> ShowStatus.Completed
+                    StremioMapping.ShowState.Ongoing -> ShowStatus.Ongoing
+                    null -> null
+                }
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = meta.poster
                 this.backgroundPosterUrl = meta.background
+                this.logoUrl = meta.logo
                 this.plot = meta.description
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
-                this.score = imdbScore(meta.imdbRating)
+                this.duration = StremioMapping.runtimeMinutes(meta.runtime)
+                this.score = scoreFromMeta(meta)
                 this.tags = meta.genres
+                this.contentRating = contentRatingFrom(meta)
+                this.actors = actorsFrom(meta)
+                this.trailers = trailersFrom(meta)
             }
         }
+    }
+
+    private fun scoreFromMeta(meta: StremioMetaDetails): Score? =
+        scoreFrom10(meta.imdbRating)
+            ?: scoreFrom10(meta.appExtras?.ratings?.imdb?.rating)
+            ?: scoreFrom10(meta.appExtras?.ratings?.tmdb?.rating)
+
+    private fun contentRatingFrom(meta: StremioMetaDetails): String? =
+        meta.ageRating?.trim()?.takeIf { it.isNotEmpty() }
+            ?: meta.appExtras?.certification?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun actorsFrom(meta: StremioMetaDetails): List<ActorData> {
+        val extras = meta.appExtras?.cast.orEmpty().mapNotNull { member ->
+            val name = member.name?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            ActorData(
+                Actor(name, member.photo?.trim()?.takeIf { it.isNotEmpty() }),
+                roleString = member.character?.trim()?.takeIf { it.isNotEmpty() },
+            )
+        }
+        if (extras.isNotEmpty()) return extras
+        return meta.cast.orEmpty().mapNotNull { name ->
+            name.trim().takeIf { it.isNotEmpty() }?.let { ActorData(Actor(it, null)) }
+        }
+    }
+
+    private fun trailersFrom(meta: StremioMetaDetails): MutableList<TrailerData> {
+        val ids = LinkedHashSet<String>()
+        meta.trailerStreams.orEmpty().forEach { trailer ->
+            trailer.ytId?.trim()?.takeIf { it.isNotEmpty() }?.let { ids.add(it) }
+        }
+        meta.trailers.orEmpty().forEach { trailer ->
+            val id = trailer.ytId?.trim()?.takeIf { it.isNotEmpty() }
+                ?: trailer.source?.trim()?.takeIf { it.isNotEmpty() }
+            id?.let { ids.add(it) }
+        }
+        return ids.mapNotNull { id ->
+            StremioMapping.trailerUrl(id)?.let { TrailerData(it, null, false) }
+        }.toMutableList()
     }
 
     private suspend fun fetchMeta(payload: StremioPayload): StremioMetaDetails? {
@@ -379,6 +436,8 @@ class StremioProvider : MainAPI() {
             this.episode = video.episode ?: video.number ?: 1
             this.posterUrl = video.thumbnail
             this.description = video.overview
+            this.score = scoreFrom10(video.rating)
+            this.runTime = StremioMapping.runtimeMinutes(video.runtime)?.times(60)
             video.released?.let { addDate(it) }
         }
     }

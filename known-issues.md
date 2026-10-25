@@ -65,6 +65,9 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
   `StremioApi` uses 20 s metadata / 90 s stream timeouts.
 - **No quick search**: `hasQuickSearch` stays `false`; the search screen submits instead of
   searching on each keystroke. Advertising the capability without implementing it throws.
+- **Some Stremio metadata has no CloudStream field**: `videos[].seasonPoster` is ignored, and
+  `videos[].available` is parsed but not filtered (unreleased episodes still appear). Embedded
+  `video.streams` and native EPG (`epgProvider`, `startTime`/`endTime`) are not implemented.
 - **Eager home rows**: CloudStream calls `getMainPage(1, null)` once and renders every row, so all
   catalog addons are fetched on the first home load; lazy rows are impossible through the API.
   Requests are bounded by a semaphore (6).
