@@ -579,3 +579,14 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   null, ES-LA/PT-BR/dub forms, Movies4u `ESub` fallback. 62 JVM tests pass via `streamiolink-tests`.
 - `known-issues.md` now records that CloudStream's preferred audio language cannot select among
   separate Stremio links. Bumped 26 → 27.
+
+## 2026-10-25 — IMDb ratings on cards and detail pages — version 28
+- AIOMetadata and Nuvio catalog `metas` (and `/meta`) include `imdbRating` (e.g. `"9.3"`), but the
+  plugin parsed it and never mapped it, so CloudStream showed no scores.
+- `StremioMapping.ratingFromImdb` validates 0..10 (null for absent/invalid/0) and
+  `StremioProvider.imdbScore` wraps it in `Score.from10`; applied to both search/home
+  `SearchResponse`s and movie/series `LoadResponse`s. Card badges additionally require
+  CloudStream's "Show ratings" setting.
+- Verified the `Score` API against the cached CloudStream pre-release stub
+  (`/root/iptv/.toolchain/cloudstream-stub/classes.jar`, source documented in its README); AGENTS
+  now points at it. 63 JVM tests pass via `streamiolink-tests`. Bumped 27 → 28.
