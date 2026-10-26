@@ -183,3 +183,18 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   dialogs and adds `clip.itemCount > 0` guard to prevent `IndexOutOfBoundsException` on empty clipboard states (`bugG.md` #17).
 - 74 JVM tests pass via `streamiolink-tests`, including comprehensive regression and edge case tests for `stremio://`.
   Bumped version 32 → 33.
+
+## 2026-10-26 — 720 quality lookbehind precision & audio/CAM false-positive exclusion — version 34
+- `StremioMapping.qualityPatterns`: the `720` entry previously used `(?<![0-9])(720p?|hd)(?![0-9a-z])`.
+  The numeric lookbehind `(?<![0-9])` allowed non-digit letters before `hd`, causing Dolby TrueHD
+  (`Movie.480p.TrueHD`) and DTS-HD (`Movie.480p.DTS-HD`) to match `hd` before 480 was checked (`bugG.md` #4).
+  Additionally, camcorder recordings (`Movie.HD-CAM`, `Movie.HD-TS`, `Movie.HD-TC`) matched `hd` and were
+  misclassified as 720p HD.
+- Fixed safely:
+  - Separated numeric resolution (`(?<![0-9])720p?(?![0-9a-z])`, allowing `1280x720`) from alias `hd`.
+  - Enforced strict alphanumeric boundaries `(?<![0-9a-z])hd(?![0-9a-z])` on `hd`.
+  - Added bounded lookbehinds `(?<!true[-_.\s])(?<!dts[-_.\s])` excluding TrueHD and DTS-HD audio formats.
+  - Added negative lookahead `(?!\s*[-_.]?(cam|ts|tc|audio))` excluding camcorder captures and HD Audio.
+  - Added `ultra[\s._-]?hd` to `2160` (4K UHD) so `Ultra-HD` releases resolve to 4K instead of falling through to 720.
+- 74 JVM tests pass via `streamiolink-tests`, with 16 new test assertions verifying audio formats, CAM rips, and Ultra HD.
+  Bumped version 33 → 34.

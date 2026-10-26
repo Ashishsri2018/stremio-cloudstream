@@ -192,10 +192,10 @@ object StremioMapping {
     )
 
     private val qualityPatterns = listOf(
-        2160 to Regex("""(?<![0-9])(2160p|4k|uhd)(?![0-9a-z])"""),
+        2160 to Regex("""(?<![0-9])(2160p|4k|uhd|ultra[\s._-]?hd)(?![0-9a-z])"""),
         1440 to Regex("""(?<![0-9])1440p?(?![0-9a-z])"""),
-        1080 to Regex("""(?<![0-9])(1080p?|fhd|fullhd|full\shd)(?![0-9a-z])"""),
-        720 to Regex("""(?<![0-9])(720p?|hd)(?![0-9a-z])"""),
+        1080 to Regex("""(?<![0-9])(1080p?|fhd|fullhd|full[\s._-]?hd)(?![0-9a-z])"""),
+        720 to Regex("""(?<![0-9])720p?(?![0-9a-z])|(?<!true[-_.\s])(?<!dts[-_.\s])(?<![0-9a-z])hd(?!\s*[-_.]?(cam|ts|tc|audio))(?![0-9a-z])"""),
         480 to Regex("""(?<![0-9])480p?(?![0-9a-z])"""),
         360 to Regex("""(?<![0-9])360p?(?![0-9a-z])"""),
         240 to Regex("""(?<![0-9])240p?(?![0-9a-z])"""),

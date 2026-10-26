@@ -128,6 +128,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    skipped. Detection covers ~40 common movie/series/anime languages using full English names plus
    unambiguous scene/ISO codes; ambiguous short codes that double as ordinary words or names are
    intentionally excluded.
+   Stream quality (`StremioMapping.parseQuality`) extracts resolution (144..2160) from title, name,
+   and filename. The `hd` alias (720) enforces alphanumeric boundaries and explicitly excludes
+   audio formats (`TrueHD`, `DTS-HD`, `HD Audio`) and camcorder rips (`HD-CAM`, `HD-TS`, `HD-TC`),
+   while `2160` matches `Ultra HD` / `Ultra-HD` releases alongside `4k`/`2160p`/`uhd`.
    `infoHash`-only streams (plain torrent addons) become a magnet via `StremioMapping.torrentUrlFor`
    (infoHash + `tracker:` sources + up to 10 public trackers + `fileIdx` as `index`) and are emitted
    as `ExtractorLinkType.MAGNET`; CloudStream's bundled torrent engine plays them from a local
