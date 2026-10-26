@@ -168,3 +168,18 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   process), uses the regular 30 s failure back-off, and serves the stale list on refresh failure.
 - 74 JVM tests pass via `streamiolink-tests` (3 new: parser, magnet merge, magnet predicate).
   CI run `40283806944` passed and published version 32.
+
+## 2026-10-26 — stremio:// protocol normalization & clipboard auto-fill — version 33
+- Addons installed from Stremio apps and web portals use the `stremio://` protocol scheme.
+  `StremioMapping.normalizeAddonUrl` previously treated non-http(s) URLs as bare domains and
+  prepended `https://`, corrupting them into `https://stremio://<domain>` (`bugG.md` #3).
+- Fixed safely via anchored regex prefix stripping (`^(?:https?://)?stremio:/+`):
+  - Strips `stremio://`, `stremio:///`, and heals pre-existing corruptions (`https://stremio://`).
+  - Preserves explicit `http://` for local Docker/LAN servers while defaulting bare domains to `https://`.
+  - Strictly enforces `contains(".")` validation so bare/invalid schemes (`stremio://`, `stremio://not a url`)
+    remain safely rejected as `null`.
+  - Rejects empty host residues (`https:`, `http:`).
+- `StremioSettingsDialog`: auto-detects `stremio:` links on clipboard in "+ Add source addon" / "+ Add catalog addon"
+  dialogs and adds `clip.itemCount > 0` guard to prevent `IndexOutOfBoundsException` on empty clipboard states (`bugG.md` #17).
+- 74 JVM tests pass via `streamiolink-tests`, including comprehensive regression and edge case tests for `stremio://`.
+  Bumped version 32 → 33.

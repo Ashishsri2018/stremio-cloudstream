@@ -315,9 +315,9 @@ object StremioSettingsDialog {
             if (initialUrl != null) {
                 setText(initialUrl)
             } else {
-                val clipboard = (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
-                    ?.primaryClip?.getItemAt(0)?.text?.toString()
-                if (!clipboard.isNullOrBlank() && clipboard.startsWith("http", ignoreCase = true)) {
+                val clip = (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.primaryClip
+                val clipboard = if (clip != null && clip.itemCount > 0) clip.getItemAt(0)?.text?.toString() else null
+                if (!clipboard.isNullOrBlank() && (clipboard.startsWith("http", ignoreCase = true) || clipboard.startsWith("stremio:", ignoreCase = true))) {
                     setText(clipboard)
                 }
             }

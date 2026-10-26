@@ -20,7 +20,7 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 - `StreamioLink` (module) — plugin entry `StremioPlugin.kt`, `openSettings` hook.
 - `StremioProvider` — `MainAPI` implementation; all CloudStream object construction.
 - `StremioApi` — network + manifest cache (TTL 30 min, stale fallback).
-- `StremioMapping` — pure, Android-free protocol logic (parsing, URL building, quality/prefix matching).
+- `StremioMapping` — pure, Android-free protocol logic (parsing, URL building, `stremio://` and HTTP(S) URL normalization, quality/prefix matching).
 - `StremioModels` — Jackson DTOs of the Stremio protocol.
 - `StremioSettings` — persisted keys and defaults. Catalog and source addons have an `enabled`
   flag (persisted as the `streamiolink_disabled_catalog_urls` / `streamiolink_disabled_source_urls`

@@ -371,5 +371,51 @@ class StremioManifestTest {
         assertNull(StremioMapping.normalizeAddonUrl(""))
         assertNull(StremioMapping.normalizeAddonUrl(null))
         assertNull(StremioMapping.normalizeAddonUrl("not a url"))
+
+        // stremio:// protocol support
+        assertEquals(
+            "https://torrentio.strem.fun",
+            StremioMapping.normalizeAddonUrl("stremio://torrentio.strem.fun/manifest.json")
+        )
+        assertEquals(
+            "https://torrentio.strem.fun",
+            StremioMapping.normalizeAddonUrl("STREMIO://torrentio.strem.fun/manifest.json")
+        )
+        assertEquals(
+            "https://torrentio.strem.fun/realdebrid=KEY",
+            StremioMapping.normalizeAddonUrl("stremio://torrentio.strem.fun/realdebrid=KEY/manifest.json")
+        )
+        assertEquals(
+            "https://v3-cinemeta.strem.io",
+            StremioMapping.normalizeAddonUrl("stremio://v3-cinemeta.strem.io")
+        )
+        assertEquals(
+            "https://v3-cinemeta.strem.io",
+            StremioMapping.normalizeAddonUrl("stremio://v3-cinemeta.strem.io/")
+        )
+        assertEquals(
+            "https://v3-cinemeta.strem.io",
+            StremioMapping.normalizeAddonUrl("stremio:///v3-cinemeta.strem.io/manifest.json")
+        )
+        assertEquals(
+            "https://v3-cinemeta.strem.io",
+            StremioMapping.normalizeAddonUrl("stremio://https://v3-cinemeta.strem.io/manifest.json")
+        )
+        assertEquals(
+            "http://192.168.1.100:7000",
+            StremioMapping.normalizeAddonUrl("stremio://http://192.168.1.100:7000/manifest.json")
+        )
+        assertEquals(
+            "https://v3-cinemeta.strem.io",
+            StremioMapping.normalizeAddonUrl("https://stremio://v3-cinemeta.strem.io/manifest.json")
+        )
+        assertEquals(
+            "https://stremio.com",
+            StremioMapping.normalizeAddonUrl("stremio.com")
+        )
+        assertNull(StremioMapping.normalizeAddonUrl("stremio://"))
+        assertNull(StremioMapping.normalizeAddonUrl("stremio://not a url"))
+        assertNull(StremioMapping.normalizeAddonUrl("https://"))
+        assertNull(StremioMapping.normalizeAddonUrl("http://"))
     }
 }

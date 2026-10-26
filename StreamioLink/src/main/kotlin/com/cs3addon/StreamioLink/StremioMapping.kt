@@ -40,6 +40,7 @@ object StremioMapping {
     const val MAX_PUBLIC_TRACKERS = 10
 
     private val manifestSuffixRegex = Regex("""/manifest\.json/?$""", RegexOption.IGNORE_CASE)
+    private val stremioPrefixRegex = Regex("""^(?:https?://)?stremio:/+""", RegexOption.IGNORE_CASE)
     private val videoFileRegex = Regex("""\.(mp4|mkv|webm|avi|mov|m4v|flv)(?![0-9a-z])""")
     private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
     private val runtimeHoursRegex = Regex("""(\d+)\s*h""", RegexOption.IGNORE_CASE)
@@ -456,12 +457,20 @@ object StremioMapping {
     fun normalizeAddonUrl(raw: String?): String? {
         var url = raw?.trim().orEmpty()
         if (url.isEmpty()) return null
+
+        url = stremioPrefixRegex.replace(url, "").trim()
+        if (url.isEmpty()) return null
+
         if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) {
             if (!url.contains(".")) return null
             url = "https://$url"
         }
         url = url.replace(manifestSuffixRegex, "")
         url = url.trimEnd('/')
+
+        if (url.equals("https:", ignoreCase = true) || url.equals("http:", ignoreCase = true)) {
+            return null
+        }
         return url.ifEmpty { null }
     }
 
