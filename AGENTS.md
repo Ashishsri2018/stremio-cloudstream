@@ -1,26 +1,34 @@
 # AGENTS.md — cs3addon / StreamioLink
 
 CloudStream 3 (Android) plugin in Kotlin that plays Stremio-addon streams.
-Single Gradle module `StreamioLink`; package `com.cs3addon.StreamioLink`.
+One Gradle module `StreamioLink`; package `com.cs3addon.StreamioLink`.
 Canonical repo: `Ashishsri2018/stremio-cloudstream` (CI publishes builds there).
 
 ## Environment (verified — do not re-check every run)
 
 - **No `gradle`/`./gradlew` execution possible here**: no Android SDK, no `local.properties`/`ANDROID_HOME`. Do not try `./gradlew ...`; it fails at configuration. Never spend turns probing for it.
 - **Heavy compilation is CI-only**: plugin builds (`make`, `makePluginsJson`, `.cs3`) and full Android/Gradle test runs happen only in GitHub Actions — commit + push, then `gh run watch <run-id> --exit-status` and inspect failures with `gh run view <run-id> --log-failed`.
-- **Lightweight local checks are allowed**: `kotlinc` (2.4.21) is installed system-wide on `PATH`, and `streamiolink-tests` ([script](/root/iptv/.toolchain/kotlin-jvm/run-tests.sh)) compiles `StremioMapping`/`StremioModels` + the JVM tests and runs JUnit offline. Do not download/install extra toolchains or jars; these cached tools are enough. The CloudStream `pre-release` compile stub is cached at `/root/iptv/.toolchain/cloudstream-stub/classes.jar` (source URL in its README) for `javap`/API checks; refresh only when the API changes. CI remains the source of truth for the real build.
+- **Lightweight local checks are allowed**: `kotlinc` (2.4.21) is on `PATH`, and `streamiolink-tests` (on `PATH`, backed by [run-tests.sh](/root/iptv/.toolchain/kotlin-jvm/run-tests.sh)) compiles `StremioMapping`/`StremioModels` + the JVM tests and runs JUnit offline. It runs exactly `StremioManifestTest`, `StremioPayloadTest`, `StremioStreamTest` and has no single-test filter — add a new test class to its `JUnitCore` list (or add cases to an existing class). `StremioApi`/`StremioProvider`/settings/dialog changes are not compiled locally; CI covers them.
+- The CloudStream `pre-release` compile stub is cached at `/root/iptv/.toolchain/cloudstream-stub/classes.jar` (source URL in its README) for `javap`/API checks; refresh only when the API changes. Do not download/install extra toolchains or jars; the cached ones are enough, and CI remains the source of truth for the real build.
 - **`git` and `gh` ARE installed and authenticated** as `Ashishsri2018` (git user/email set, `gh auth status` logged in, HTTPS push works). Commit/push and watch CI with `gh run watch <id> --exit-status` directly — no need to verify auth first.
-- CI (`.github/workflows/build.yml`) is the only real build; it runs on push to `main` and publishes to the `builds` branch.
+- CI (`.github/workflows/build.yml`) is the only real build; it runs on push to `main`/`master` (and `workflow_dispatch`) and publishes a force-orphaned `builds` branch.
 
 ## Commands
 
-- Unit tests: `./gradlew testDebugUnitTest` — pure JVM, no network, cover `StremioMapping`.
-- Fast local equivalent: `streamiolink-tests` — compiles `StremioMapping`/`StremioModels` + the JVM tests with the cached `kotlinc` and runs JUnit offline.
-- Single test: `./gradlew testDebugUnitTest --tests "com.cs3addon.StreamioLink.StremioStreamTest"`.
-- Plugin build: `./gradlew make makePluginsJson` → `.cs3` + `build/plugins.json`.
+- Unit tests: `./gradlew testDebugUnitTest` — CI/reference only (cannot run here); pure JVM, no network, covers `StremioMapping`/`StremioModels`.
+- Fast local equivalent: `streamiolink-tests` — compiles the pure layer + tests and runs all three JUnit classes offline (no filter).
+- Single test: `./gradlew testDebugUnitTest --tests "com.cs3addon.StreamioLink.StremioStreamTest"` (CI).
+- Plugin build: `./gradlew make makePluginsJson` → `.cs3` + `build/plugins.json` (CI only).
 - Addon playtest: `python3 tools/playtest.py <addon-url> --id tt0111161 --type movie` (live network, stdlib only) — **INCOMPLETE / LOW PRIORITY, not maintained** (details in `known-issues.md`). Don't rely on it; the plugin + its JVM unit tests are the source of truth. When it does something, `--manifest` prints a compatibility summary, `--search`/`--catalog ... --play` are other entry points, `--deep` fetches an HLS segment, `--json` is machine output.
-- Live addons used for playtesting are recorded in `tools/test-addons.json` (nuvio catalog + hdhub/pengu/cnc/meteor, test id `tt0111161`). Keep it updated when addon configs change.
+- Live addons used for playtesting are recorded in `tools/test-addons.json` (AioMetadata/nuvio catalogs + hdhub/pengu/cnc/playvio/yuki/meteor sources, test id `tt0111161`). Keep it updated when addon configs change.
 - Local builds need Android SDK 35 (`compileSdk 35`), a `local.properties`/`ANDROID_HOME`, and network for Gradle 8.12 + JitPack — none present here, so treat `.github/workflows/build.yml` as the build source of truth (JDK 17 + Android SDK).
+
+## Branches
+
+- `main` = stable `StreamioLink`; `build.yml` publishes to `builds` (install repo URL uses `/main/repo.json`).
+- `dev` = experimental `StreamioLinkDev` (separate module/package, `version = 103`, own `build-dev.yml` → `builds-dev`, repo URL `/dev/repo.json`). It installs alongside the stable plugin and shares the `streamiolink_*` settings.
+- `dev` is based on the old v16 line and is far behind `main`; cherry-pick winning code changes (without the rename) and bump the stable version. Never merge `dev` wholesale.
+- Empty `StreamioLinkDev/` dirs can remain after checking out `dev`; on `main` they are untracked, have no `build.gradle.kts`, and are not a Gradle module.
 
 ## On-device debugging — rish + logcat (verified working)
 
@@ -58,15 +66,20 @@ Split phases at each `PlayViewGen: loadLinks` line (Play is the first, Reload mi
 - Bump the `version` int in `StreamioLink/build.gradle.kts` when publishing, so CloudStream replaces an already-installed copy.
 - `settings.gradle.kts` auto-includes every subdir with a `build.gradle.kts` (except `disabled`); new modules register without editing it.
 - `StremioMapping` must stay free of Android/CloudStream imports (it is the unit-tested layer). Android/CloudStream code belongs in `StremioApi`/`StremioProvider`/`StremioSettingsDialog`.
+- Every feature must be **battery-friendly**: keep CPU, network, and wake-up cost on the client device to an absolute minimum. Avoid background loops/polling, needless re-fetches or re-parses, and redundant allocations; reuse what is already fetched, batch requests, and let work happen on demand.
 
 ## Quirks
 
 - Install URL must include the branch: `https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/repo.json`. Branch-less raw URLs 404, and raw.githubusercontent serves stale CDN copies for minutes after a push.
 - `repo.json` (manifestVersion 2, main branch) points users at `builds/plugins.json`. The `builds` branch is a force-orphaned CI artifact — never hand-edit it; publish via CI.
 - Settings UI is programmatic (no XML resources). `StremioMapping.normalizeAddonUrl` is the single URL normalizer — use it for all addon URLs (accepts base URL or full `manifest.json`).
-- Stream-kind detection uses `contains`, not `endsWith` (addons like PenguPlay append `|^|meta` after the extension).
+- Stream-kind detection is URL-only (no HEAD/network probe) and uses `contains`, not `endsWith` (addons like PenguPlay append `|^|meta` after the extension); explicit `.mpd`/`.m3u8`/video extensions win over path hints.
+- Every `app.get(...)` must pass an explicit `timeout = ...`; NiceHttp's default `timeout = 0` leaves OkHttp's 10 s read timeout, silently dropping slow addons.
+- `StremioApi` catch blocks must rethrow `CancellationException` instead of returning an empty result.
+- CloudStream `Episode.runTime` and `LoadResponse.duration` are **minutes** (the episode UI multiplies `runTime` by 60).
 
 ## Docs
 
 - `architecture.md` — system layout + data flow; `memory.md` — running log of release/CI lessons (append new dated entries); `known-issues.md` — current unresolved issues/limitations (put new ones here, not in `memory.md`). Keep the architecture/memory docs in sync with behavior changes, and move fixed items out of `known-issues.md`.
+- `TODO.md` is an idea backlog with explicitly `DROPPED` items, not a roadmap; `bugF.md`/`bugG.md` are gitignored scratch notes, not authoritative.
 - Commit style is terse descriptive (`git log`); CI builds on pushes to `main`/`master`.
