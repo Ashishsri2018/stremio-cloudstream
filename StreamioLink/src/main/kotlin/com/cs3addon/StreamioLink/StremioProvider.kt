@@ -513,7 +513,18 @@ class StremioProvider : MainAPI() {
                             seenSubtitleUrls,
                             subtitleCallback,
                         )
-                        for (candidate in candidatesFor(addonName, streams, subtitleProbeHash, subtitleProbeSize)) {
+                        val publicTrackers = if (streams.any { StremioMapping.needsInfoHashMagnet(it) }) {
+                            StremioApi.getPublicTrackers()
+                        } else {
+                            emptyList()
+                        }
+                        for (candidate in candidatesFor(
+                            addonName,
+                            streams,
+                            subtitleProbeHash,
+                            subtitleProbeSize,
+                            publicTrackers,
+                        )) {
                             if (emitted.incrementAndGet() > MAX_LINKS) break
                             callback.invoke(
                                 newExtractorLink(
@@ -568,13 +579,14 @@ class StremioProvider : MainAPI() {
         streams: List<StremioStream>,
         subtitleHash: AtomicReference<String?>,
         subtitleSize: AtomicReference<Long?>,
+        publicTrackers: List<String>,
     ): List<LinkCandidate> {
         val candidates = ArrayList<LinkCandidate>(streams.size)
         for (stream in streams) {
             // Debrid/direct addons carry a `url`; plain torrent addons only an `infoHash`.
             // The latter becomes a magnet, which Cloudstream's bundled torrent server plays.
             val playbackUrl = StremioMapping.playbackUrlFor(stream)
-                ?: StremioMapping.torrentUrlFor(stream)
+                ?: StremioMapping.torrentUrlFor(stream, publicTrackers)
                 ?: continue
             val headers = StremioMapping.requestHeadersFor(stream)
             val qualityValue = StremioMapping.parseQuality(

@@ -59,13 +59,17 @@ This repo independently confirms A (headers fallback `proxyHeaders.request ?: he
   (it's an Android/CloudStream class, so it can't live in the pure `StremioMapping` layer).
 - Details in `memory.md` (v12 headers entry + embedded-subtitles entry).
 
-### D. Enrich infoHash magnets with a public tracker list
-- [ ] `Stream.runCallback` builds `magnet:` from `infoHash` **plus** the stream's `tracker:` sources
+### D. Enrich infoHash magnets with a public tracker list — DONE (2026-10-26)
+- [x] `Stream.runCallback` builds `magnet:` from `infoHash` **plus** the stream's `tracker:` sources
   **plus** trackers fetched from a public list (`ngosang/trackerslist …/trackers_best.txt`; their
   Torrentio uses `newtrackon.com/api/stable`). Our `StremioMapping.torrentUrlFor` only uses the
   addon's own trackers, so a bare `infoHash` yields a magnet with no trackers and may never connect.
-- [ ] Fetch + cache the list (long TTL), merge/dedup, cap (doGior caps at ~10 trackers). Pure win for
+- [x] Fetch + cache the list (long TTL), merge/dedup, cap (doGior caps at ~10 trackers). Pure win for
   P2P playback; keep it out of the pure `StremioMapping` layer (it's a network concern for `StremioApi`).
+- Implemented in v32: the fetch is lazy (only when an `infoHash` magnet is about to be emitted),
+  cached in memory for 12 h with a 5 s timeout and the regular 30 s failure back-off + stale
+  fallback. Parsing/merge/cap (10) live in `StremioMapping` and are unit-tested; the network call
+  and cache live in `StremioApi`.
 
 ### E. Built-in subtitle fallbacks when no subtitle addon is configured  — DROPPED (not needed)
 - [ ] Always query OpenSubtitles v3 (`https://opensubtitles-v3.strem.io/subtitles/{movie|series}/{id}.json`)

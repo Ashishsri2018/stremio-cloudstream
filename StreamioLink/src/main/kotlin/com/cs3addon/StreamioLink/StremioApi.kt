@@ -18,6 +18,11 @@ object StremioApi {
     private const val MANIFEST_TTL_MS = 30 * 60 * 1000L
     private const val MANIFEST_CACHE_MAX = 32
 
+    private const val TRACKER_LIST_URL =
+        "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
+    private const val TRACKER_LIST_TTL_MS = 12 * 60 * 60 * 1000L
+    private const val TRACKER_TIMEOUT_MS = 5_000L
+
     /** Timeout for manifest/catalog/meta requests — these are expected to be fast. */
     const val DEFAULT_TIMEOUT_MS = 20_000L
 
@@ -44,6 +49,14 @@ object StremioApi {
 
     /** Keys of URLs that recently failed, mapped to the timestamp they may be retried at. */
     private val failedUntil = ConcurrentHashMap<String, Long>()
+
+    private val trackerMutex = Mutex()
+
+    @Volatile
+    private var publicTrackers: List<String> = emptyList()
+
+    @Volatile
+    private var publicTrackersFetchedAt = 0L
 
     /**
      * Streams are the slowest and heaviest addon call (aggregators take 10-30 s server-side).
@@ -80,6 +93,49 @@ object StremioApi {
 
     private fun clearFailure(key: String) {
         failedUntil.remove(key)
+    }
+
+    // ---------------------------------------------------------------- public trackers
+
+    /**
+     * Trackers merged into infoHash magnets. Fetched lazily (only when a torrent link is being
+     * produced) and cached in memory for 12 h. A failed refresh keeps the stale list and is
+     * retried no sooner than the regular failure back-off.
+     */
+    suspend fun getPublicTrackers(): List<String> {
+        val now = System.currentTimeMillis()
+        if (publicTrackers.isNotEmpty() && now - publicTrackersFetchedAt < TRACKER_LIST_TTL_MS) {
+            return publicTrackers
+        }
+        return trackerMutex.withLock {
+            val lockedNow = System.currentTimeMillis()
+            if (publicTrackers.isNotEmpty() &&
+                lockedNow - publicTrackersFetchedAt < TRACKER_LIST_TTL_MS
+            ) {
+                return@withLock publicTrackers
+            }
+            if (isBackingOff(TRACKER_LIST_URL)) return@withLock publicTrackers
+            try {
+                val text = request(TRACKER_LIST_URL, TRACKER_TIMEOUT_MS)
+                val parsed = text?.let { StremioMapping.parsePublicTrackers(it) }.orEmpty()
+                if (parsed.isEmpty()) {
+                    markFailure(TRACKER_LIST_URL)
+                    publicTrackers
+                } else {
+                    publicTrackers = parsed
+                    publicTrackersFetchedAt = lockedNow
+                    clearFailure(TRACKER_LIST_URL)
+                    Log.d(TAG, "Loaded ${parsed.size} public trackers")
+                    parsed
+                }
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                Log.e(TAG, "Public tracker list failed: ${t.message}")
+                markFailure(TRACKER_LIST_URL)
+                publicTrackers
+            }
+        }
     }
 
     // ---------------------------------------------------------------- manifest

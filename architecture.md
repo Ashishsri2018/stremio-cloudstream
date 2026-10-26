@@ -129,9 +129,14 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    unambiguous scene/ISO codes; ambiguous short codes that double as ordinary words or names are
    intentionally excluded.
    `infoHash`-only streams (plain torrent addons) become a magnet via `StremioMapping.torrentUrlFor`
-   (infoHash + `tracker:` sources + `fileIdx` as `index`) and are emitted as
-   `ExtractorLinkType.MAGNET`; CloudStream's bundled torrent engine plays them from a local server,
-   so P2P works without a debrid account.
+   (infoHash + `tracker:` sources + up to 10 public trackers + `fileIdx` as `index`) and are emitted
+   as `ExtractorLinkType.MAGNET`; CloudStream's bundled torrent engine plays them from a local
+   server, so P2P works without a debrid account. The public tracker list (ngosang
+   `trackers_best.txt`) is fetched only when an `infoHash` magnet is about to be produced — never on
+   home/search/meta: `StremioApi.getPublicTrackers` caches it in memory for 12 h behind a dedicated
+   mutex (at most one 5 s request per process; on failure the stale list is served and the regular
+   30 s back-off applies). Addon trackers stay permissive and come first; public entries are
+   scheme-filtered and deduped. Magnet URLs carried in `stream.url` are passed through unchanged.
 5. Subtitles: addons declaring `subtitles` resource → `/subtitles/{type}/{id}.json`,
    enriched with `videoHash`/`videoSize` from the first stream when available. The canonical
    hint-bearing URL is tried first; if the addon answers with a non-JSON body (some, e.g.

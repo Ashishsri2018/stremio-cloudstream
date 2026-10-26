@@ -167,6 +167,80 @@ class StremioStreamTest {
     }
 
     @Test
+    fun parsesPublicTrackerList() {
+        val text = """
+            # comment
+            udp://tracker.opentrackr.org:1337/announce
+
+            https://tracker.example/announce
+            wss://tracker.example/socket
+            http://tracker.example/plain
+            ftp://tracker.example/ignored
+            https://bad.example/announce with space
+            udp://tracker.opentrackr.org:1337/announce
+            not-a-url
+        """.trimIndent() + "\r\n"
+        assertEquals(
+            listOf(
+                "udp://tracker.opentrackr.org:1337/announce",
+                "https://tracker.example/announce",
+                "wss://tracker.example/socket",
+                "http://tracker.example/plain",
+            ),
+            StremioMapping.parsePublicTrackers(text)
+        )
+        assertEquals(2, StremioMapping.parsePublicTrackers(text, max = 2).size)
+        assertTrue(StremioMapping.parsePublicTrackers(text, max = 0).isEmpty())
+    }
+
+    @Test
+    fun mergesPublicTrackersIntoMagnet() {
+        val stream = StremioStream(
+            infoHash = "DEADBEEF",
+            fileIdx = 2,
+            behaviorHints = StremioBehaviorHints(filename = "Show S01E01.mkv"),
+            sources = listOf(
+                "tracker:udp://addon.example:1337/announce",
+                "https://tracker.example/announce",
+            ),
+        )
+        val magnet = StremioMapping.torrentUrlFor(
+            stream,
+            listOf(
+                "https://tracker.example/announce",
+                "udp://public.example:1337/announce",
+                "  ",
+            ),
+        )!!
+        assertTrue(magnet.startsWith("magnet:?xt=urn:btih:DEADBEEF"))
+        assertTrue(magnet.contains("dn=Show%20S01E01.mkv"))
+        assertEquals(3, Regex("""[?&]tr=""").findAll(magnet).count())
+        assertTrue(
+            magnet.indexOf("tr=" + StremioMapping.encodeQueryValue("udp://addon.example:1337/announce")) <
+                magnet.indexOf("tr=" + StremioMapping.encodeQueryValue("udp://public.example:1337/announce"))
+        )
+        assertTrue(magnet.endsWith("&index=2"))
+    }
+
+    @Test
+    fun detectsStreamsThatNeedInfoHashMagnets() {
+        assertTrue(StremioMapping.needsInfoHashMagnet(streams[2]))
+        assertTrue(StremioMapping.needsInfoHashMagnet(StremioStream(infoHash = "DEADBEEF")))
+        assertTrue(!StremioMapping.needsInfoHashMagnet(StremioStream()))
+        assertTrue(!StremioMapping.needsInfoHashMagnet(StremioStream(infoHash = "  ")))
+        assertTrue(!StremioMapping.needsInfoHashMagnet(streams[0])) // direct URL
+        assertTrue(!StremioMapping.needsInfoHashMagnet(streams[1])) // ytId
+        assertTrue(!StremioMapping.needsInfoHashMagnet(streams[4])) // externalUrl only
+        assertTrue(!StremioMapping.needsInfoHashMagnet(StremioStream(url = "magnet:?xt=urn:btih:DEADBEEF")))
+        // An unplayable URL still falls back to the hash.
+        assertTrue(
+            StremioMapping.needsInfoHashMagnet(
+                StremioStream(url = "https://bad.example/my file.mkv", infoHash = "DEADBEEF")
+            )
+        )
+    }
+
+    @Test
     fun extractsProxyHeadersAndReferer() {
         val headers = StremioMapping.requestHeadersFor(streams[0])
         assertEquals("TestUA", headers["User-Agent"])

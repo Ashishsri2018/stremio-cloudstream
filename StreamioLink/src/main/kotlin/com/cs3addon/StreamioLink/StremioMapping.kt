@@ -36,6 +36,9 @@ object StremioMapping {
      */
     const val DEFAULT_STREAM_USER_AGENT = "okhttp/4.12.0"
 
+    /** Cap on public trackers merged into an infoHash magnet, keeping the URI compact. */
+    const val MAX_PUBLIC_TRACKERS = 10
+
     private val manifestSuffixRegex = Regex("""/manifest\.json/?$""", RegexOption.IGNORE_CASE)
     private val videoFileRegex = Regex("""\.(mp4|mkv|webm|avi|mov|m4v|flv)(?![0-9a-z])""")
     private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
@@ -45,6 +48,7 @@ object StremioMapping {
     private val healthEndpointUrlRegex = Regex("""/healthz?(?:[?#]|$)""", RegexOption.IGNORE_CASE)
     private val whitespaceRegex = Regex("""\s+""")
     private val whitespaceInUrlRegex = Regex("""\s""")
+    private val publicTrackerUrlRegex = Regex("""^(?:udp|https?|wss)://\S+$""", RegexOption.IGNORE_CASE)
 
     /** Cap on how many language tags are shown for one stream, keeping the label compact. */
     private const val MAX_LANGUAGE_TAGS = 3
@@ -529,6 +533,22 @@ object StremioMapping {
     }
 
     /**
+     * Parses the blank-line-separated tracker list served by ngosang/trackerslist.
+     * Only well-formed announce URLs are kept; order is preserved and duplicates are dropped.
+     */
+    fun parsePublicTrackers(text: String, max: Int = MAX_PUBLIC_TRACKERS): List<String> {
+        if (max <= 0) return emptyList()
+        val trackers = LinkedHashSet<String>()
+        for (line in text.lineSequence()) {
+            val tracker = line.trim()
+            if (tracker.isEmpty() || tracker.startsWith("#") || !publicTrackerUrlRegex.matches(tracker)) continue
+            trackers.add(tracker)
+            if (trackers.size >= max) break
+        }
+        return trackers.toList()
+    }
+
+    /**
      * True when [url] is an `http(s)`/`magnet:` URL with no embedded whitespace. Some addons
      * (e.g. CNCVerse) return raw URLs containing literal spaces, which the player cannot
      * open; dropping them removes a guaranteed-dead link from the list. `magnet:` is kept so
@@ -568,20 +588,29 @@ object StremioMapping {
     }
 
     /**
+     * True when the stream will fall back to an infoHash magnet. Magnets carried in `url` are
+     * already complete and are passed through unchanged, so they do not need tracker enrichment.
+     */
+    fun needsInfoHashMagnet(stream: StremioStream): Boolean =
+        playbackUrlFor(stream) == null && !stream.infoHash.isNullOrBlank()
+
+    /**
      * Magnet URI for an infoHash-only stream, or null when the stream has no hash.
      *
      * Cloudstream's bundled torrent engine plays these: the host app turns a magnet
      * link into a local range server (`127.0.0.1`) and streams it, so a P2P Stremio
      * stream is playable without a debrid account. `index` selects a file inside
-     * multi-file torrents (season packs).
+     * multi-file torrents (season packs). Public trackers are appended after the
+     * addon's own trackers, deduped.
      */
-    fun torrentUrlFor(stream: StremioStream): String? {
+    fun torrentUrlFor(stream: StremioStream, publicTrackers: List<String> = emptyList()): String? {
         val hash = stream.infoHash?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val parts = ArrayList<String>()
         parts.add("xt=urn:btih:$hash")
         stream.behaviorHints?.filename?.trim()?.takeIf { it.isNotEmpty() }?.let {
             parts.add("dn=${encodeQueryValue(it)}")
         }
+        val seenTrackers = HashSet<String>()
         stream.sources.orEmpty().forEach { raw ->
             val tracker = when {
                 raw.startsWith("tracker:", ignoreCase = true) -> raw.substringAfter("tracker:")
@@ -589,7 +618,15 @@ object StremioMapping {
                 raw.contains("://") -> raw
                 else -> null
             }?.trim()?.takeIf { it.isNotEmpty() }
-            if (tracker != null) parts.add("tr=${encodeQueryValue(tracker)}")
+            if (tracker != null && seenTrackers.add(tracker)) {
+                parts.add("tr=${encodeQueryValue(tracker)}")
+            }
+        }
+        publicTrackers.forEach { raw ->
+            val tracker = raw.trim()
+            if (tracker.isNotEmpty() && seenTrackers.add(tracker)) {
+                parts.add("tr=${encodeQueryValue(tracker)}")
+            }
         }
         stream.fileIdx?.takeIf { it >= 0 }?.let { parts.add("index=$it") }
         return "magnet:?" + parts.joinToString("&")
