@@ -152,3 +152,19 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   ReANIME). Both VOD and TV catalogs advertise `skip` but ignore it, so load-more repeats.
 - 71 JVM tests pass via `streamiolink-tests`, including regression coverage for existing media
   types and negative `other` cases. Bumped 30 → 31.
+
+## 2026-10-26 — Public trackers for infoHash magnets — version 32
+- The decompiled `pluginsExample/StremioAddon` enriches magnet links with the ngosang public
+  tracker list; ours only used addon `tracker:` sources, so a bare `infoHash` could yield a magnet
+  with no trackers. This was the last open item from that comparison (TODO §D).
+- `StremioMapping.torrentUrlFor(stream, publicTrackers)` now merges up to 10 public trackers after
+  the addon's own, deduped; `dn`, addon trackers and `fileIdx`/`index` keep their existing order.
+  `parsePublicTrackers` accepts only `udp/http/https/wss`, drops blanks/comments/dupes, and
+  `needsInfoHashMagnet` mirrors the direct-URL → magnet fallback (magnets in `stream.url` are
+  passed through unchanged).
+- Battery/on-device policy: no fetch at plugin load, home, search or meta. `StremioApi`
+  `getPublicTrackers()` is called from `loadLinks` only when an addon response contains an
+  infoHash-only stream; it caches in memory for 12 h behind a dedicated mutex (one 5 s request per
+  process), uses the regular 30 s failure back-off, and serves the stale list on refresh failure.
+- 74 JVM tests pass via `streamiolink-tests` (3 new: parser, magnet merge, magnet predicate).
+  CI run `40283806944` passed and published version 32.
