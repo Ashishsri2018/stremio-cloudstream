@@ -247,4 +247,4 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   existing `other`/`anime` behavior. `number`-only channel videos are not inferred (Reddate YT uses
   `season`/`episode`).
 - 83 JVM tests pass via `streamiolink-tests` (2 new test methods); existing media types re-asserted
-  unchanged. Bumped 36 → 37.
+  unchanged. Bumped 36 → 37. CI run `40491088787` passed and published version 37.
