@@ -231,4 +231,6 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   ExoPlayer's progressive MP3/ADTS extractors; HLS radio uses `M3U8`. CloudStream has no audio
   `ExtractorLinkType`, so ICY/Shoutcast and `.pls`/`.m3u` edge cases are documented in
   `known-issues.md`.
-- 81 JVM tests pass via `streamiolink-tests` (3 new test methods). Bumped 35 → 36.
+- 81 JVM tests pass via `streamiolink-tests` (3 new test methods). Bumped 35 → 36. CI run
+  `40486937856` passed and published version 36; Radios and Flix-Music are recorded in
+  `tools/test-addons.json` under `musicRadio`.

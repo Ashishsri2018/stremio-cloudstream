@@ -1,5 +1,5 @@
 {
-  "_comment": "Live addons used to playtest StreamioLink. Catalog = nuvio, sources = the four addons under test. The plugin accepts either the base URL or the manifest.json URL. Test movie: tt0111161 (The Shawshank Redemption).",
+  "_comment": "Live addons used to playtest StreamioLink. Movie/series config: catalogs + sources. The musicRadio section lists music/radio addons used as both catalog and source. The plugin accepts either the base URL or the manifest.json URL. Movie test: tt0111161 (The Shawshank Redemption).",
   "testId": "tt0111161",
   
   "catalogs": [
@@ -52,5 +52,37 @@
       "home": "https://meteorfortheweebs.midnightignite.me/configure",
       "notes": "P2P torrent addon."
     }
-  ]
+  ],
+
+  "musicRadio": {
+    "_comment": "Music/radio addons used for playtesting. Both declare catalog, meta and stream; configure them as catalog addons with 'use as source' enabled.",
+    "testIds": {
+      "radios": "radios:99497996|QU5URU5ORSUyMEJBWUVSTg==",
+      "flixMusic": "lfm:eyJhcnRpc3QiOiJBRFx1MDBjOUxBIiwidGl0bGUiOiJOSUNPTEUgS0lETUFOIiwibWJpZCI6IjdjOTU5MTI3LWY5MzQtNGVhOC1hZTI3LTk5YjI1MzNjYmY5ZSJ9"
+    },
+    "catalogs": [
+      {
+        "name": "Radios",
+        "url": "https://1fe84bc728af-stremio-radios.baby-beamup.club/manifest.json",
+        "notes": "93k SHOUTcast stations. Music catalog with search/skip/genre; items are type movie with radios: ids; streams are direct audio URLs (extension-less Shoutcast/Icecast)."
+      },
+      {
+        "name": "Flix-Music",
+        "url": "https://flix-music.vercel.app/manifest.json",
+        "notes": "Last.fm discovery with three movie-type catalogs (Music - Top/Trending/Search) and lfm: ids. Sampled stream responses were empty (addon-side), so playback is unverified."
+      }
+    ],
+    "sources": [
+      {
+        "name": "Radios",
+        "url": "https://1fe84bc728af-stremio-radios.baby-beamup.club/manifest.json",
+        "notes": "Same addon as the catalog: use it as a source to play station ids from its catalog."
+      },
+      {
+        "name": "Flix-Music",
+        "url": "https://flix-music.vercel.app/manifest.json",
+        "notes": "Same addon as the catalog: streams are looked up by lfm: id; sampled responses were empty."
+      }
+    ]
+  }
 }
