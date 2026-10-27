@@ -38,8 +38,11 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 ## Data Flow
 1. Home: each catalog addon's manifest → loadable catalogs → `/catalog/{type}/{id}.json` → rows.
    A catalog is loadable when its type is `movie`, `series`, `anime`, `anime.movie`,
-   `anime.series`, `tv` or `other` and every required extra can be satisfied from the manifest
-   itself (`StremioMapping.catalogPresetExtra`: its `default`, else the first `options` entry).
+   `anime.series`, `tv`, `music`, `radio` or `other` and every required extra can be satisfied
+   from the manifest itself (`StremioMapping.catalogPresetExtra`: its `default`, else the first
+   `options` entry). `music`/`radio` catalogs come from radio addons: their items are movie-like
+   single-stream stations, and home/search cards fall back from `poster` to `logo`/`background`
+   because stations usually carry only a logo.
    `search`/`similar`/`calendarVideosIds` therefore stay off the home page. The resolved preset is
    sent as a path extra (`genre=Fall%202026`), so genre-locked catalogs (TMDB By Year, By Language,
    TVDB Genres, MAL Seasons/Studios) still get rows fixed to that one value; `showInHome:false`
@@ -116,7 +119,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    over semantic path hints: `.mpd` → DASH and `.m3u8` → HLS win outright, a known video-container
    extension (`.mp4/.mkv/.webm/…`) → VIDEO, and only then do the `/hls`, `/playlist`, `mpegurl`
    path hints and a `.m3u8` hidden in a proxy query apply. This keeps a DASH manifest under an
-   `/hls/` path DASH and a direct file in a `playlist` folder VIDEO. `ytId` streams are YouTube
+   `/hls/` path DASH and a direct file in a `playlist` folder VIDEO. Audio-only radio URLs
+   (extension-less Shoutcast/Icecast, `.mp3`/`.aac`) map to `VIDEO` and rely on ExoPlayer's
+   progressive extractors (MP3/ADTS); CloudStream has no audio link type, so HLS radio uses
+   `M3U8` and ICY/Shoutcast edge cases are tracked in `known-issues.md`. `ytId` streams are YouTube
    **page** URLs, not media files: the provider hands them to CloudStream's `loadExtractor`
    (YouTube extractors) instead of emitting them as `VIDEO`, and drops the link if extraction
    fails. Addon "nothing found"

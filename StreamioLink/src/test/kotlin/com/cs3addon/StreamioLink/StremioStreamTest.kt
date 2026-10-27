@@ -402,6 +402,24 @@ class StremioStreamTest {
     }
 
     @Test
+    fun radioStreamsUseProgressiveVideoKind() {
+        // Shoutcast/Icecast URLs usually have no extension; ExoPlayer sniffs MP3/ADTS from the
+        // progressive stream, so they must not be mistaken for HLS/DASH.
+        assertEquals(
+            StremioMapping.StreamKind.VIDEO,
+            StremioMapping.guessStreamKind("http://stream.antenne.de:80/antenne")
+        )
+        assertEquals(
+            StremioMapping.StreamKind.VIDEO,
+            StremioMapping.guessStreamKind("https://radio.example/live/stream.mp3")
+        )
+        assertEquals(
+            StremioMapping.StreamKind.HLS,
+            StremioMapping.guessStreamKind("https://radio.example/live/stream.m3u8")
+        )
+    }
+
+    @Test
     fun parsesQualityFromAddonText() {
         assertEquals(1080, StremioMapping.parseQuality("Movie.2024.1080p.WEB-DL"))
         assertEquals(1080, StremioMapping.parseQuality("FullHD"))

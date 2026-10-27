@@ -202,6 +202,54 @@ class StremioManifestTest {
     }
 
     @Test
+    fun musicAndRadioCatalogsAreSupported() {
+        assertTrue(StremioMapping.isSupportedMediaType("music"))
+        assertTrue(StremioMapping.isSupportedMediaType("Radio"))
+        assertTrue(StremioMapping.isAudioMediaType("Music"))
+        assertTrue(StremioMapping.isAudioMediaType("radio"))
+        assertFalse(StremioMapping.isAudioMediaType("movie"))
+        assertFalse(StremioMapping.usesEpisodes("music"))
+        assertFalse(StremioMapping.usesEpisodes("radio"))
+
+        val radios = StremioCatalog(
+            type = "music",
+            id = "radios",
+            name = "Radios",
+            extra = listOf(
+                StremioExtra(name = "search"),
+                StremioExtra(name = "skip"),
+                StremioExtra(name = "genre"),
+            ),
+        )
+        assertTrue(StremioMapping.catalogCanLoadHome(radios))
+        assertTrue(StremioMapping.catalogSupportsSearch(radios))
+        assertTrue(StremioMapping.catalogSupportsSkip(radios))
+
+        val stations = StremioCatalog(type = "radio", id = "stations", name = "Stations")
+        assertTrue(StremioMapping.catalogCanLoadHome(stations))
+        assertFalse(StremioMapping.catalogSupportsSearch(stations))
+    }
+
+    @Test
+    fun audioCatalogPreviewsFallBackToLogoForPoster() {
+        val station = StremioMetaPreview(
+            id = "radios:1",
+            name = "Station",
+            logo = "http://cdn.example/logo.png",
+            background = "http://cdn.example/bg.png",
+        )
+        assertEquals("http://cdn.example/logo.png", StremioMapping.previewPoster(station, "music"))
+        assertEquals("http://cdn.example/logo.png", StremioMapping.previewPoster(station, "radio"))
+        assertNull(StremioMapping.previewPoster(station, "movie"))
+
+        val withPoster = station.copy(poster = "http://cdn.example/poster.png")
+        assertEquals("http://cdn.example/poster.png", StremioMapping.previewPoster(withPoster, "music"))
+
+        val backgroundOnly = station.copy(logo = null)
+        assertEquals("http://cdn.example/bg.png", StremioMapping.previewPoster(backgroundOnly, "radio"))
+    }
+
+    @Test
     fun otherSeriesUseEpisodesOnlyWithNumberedVideos() {
         assertTrue(
             StremioMapping.usesEpisodes(

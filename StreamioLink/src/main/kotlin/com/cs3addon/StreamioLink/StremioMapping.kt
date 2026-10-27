@@ -16,10 +16,16 @@ object StremioMapping {
      * Catalog types that can be mapped onto Cloudstream. `anime` catalogs carry the same
      * movie/series metas as the others (their items declare `type`), so they are loadable too;
      * excluding them dropped whole rows from addons such as AIOMetadata. `other` is used by
-     * VOD bridge addons such as CNCVerse.
+     * VOD bridge addons such as CNCVerse. `music`/`radio` are audio catalogs (radio addons such
+     * as Stremio Radios); their items are movie-like single streams and their catalogs carry
+     * the station logos rather than posters.
      */
-    val SUPPORTED_MEDIA_TYPES =
-        setOf("movie", "series", "anime", "anime.movie", "anime.series", "tv", "other")
+    val SUPPORTED_MEDIA_TYPES = setOf(
+        "movie", "series", "anime", "anime.movie", "anime.series", "tv", "other", "music", "radio",
+    )
+
+    /** Catalog types whose items are audio-only (radio stations, music streams). */
+    val AUDIO_MEDIA_TYPES = setOf("music", "radio")
 
     /**
      * Live-channel types. A `tv` meta carries no `videos`; it is a single endless stream (Pluto TV
@@ -333,6 +339,10 @@ object StremioMapping {
     fun isSupportedMediaType(type: String?): Boolean =
         SUPPORTED_MEDIA_TYPES.contains(type?.trim()?.lowercase())
 
+    /** True for audio-only catalog types (`music`, `radio`). */
+    fun isAudioMediaType(type: String?): Boolean =
+        AUDIO_MEDIA_TYPES.contains(type?.trim()?.lowercase())
+
     /** True for media types whose metadata carries episodes. */
     fun isSeriesType(type: String?): Boolean = when (type?.trim()?.lowercase()) {
         "series", "anime.series", "tv", "tvseries" -> true
@@ -412,6 +422,18 @@ object StremioMapping {
     fun catalogSupportsSkip(catalog: StremioCatalog): Boolean {
         if (catalog.extra.orEmpty().any { it.name?.equals("skip", ignoreCase = true) == true }) return true
         return catalog.extraSupported.orEmpty().any { it.equals("skip", ignoreCase = true) }
+    }
+
+    /**
+     * Card art for a catalog preview. Radio/music addons usually leave `poster` empty and put the
+     * station logo in `logo` (often a square image), so those catalogs fall back to `logo` and then
+     * `background`. Movie/series cards keep the previous poster-only behavior.
+     */
+    fun previewPoster(preview: StremioMetaPreview, catalogType: String?): String? {
+        preview.poster?.takeIf { it.isNotBlank() }?.let { return it }
+        if (!isAudioMediaType(catalogType)) return null
+        return preview.logo?.takeIf { it.isNotBlank() }
+            ?: preview.background?.takeIf { it.isNotBlank() }
     }
 
     /**

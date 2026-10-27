@@ -259,13 +259,13 @@ class StremioProvider : MainAPI() {
         val title = meta.name?.takeIf { it.isNotBlank() } ?: id
         return if (StremioMapping.usesEpisodes(type)) {
             newTvSeriesSearchResponse(title, payload) {
-                this.posterUrl = meta.poster
+                this.posterUrl = StremioMapping.previewPoster(meta, fallbackType)
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
                 this.score = scoreFrom10(meta.imdbRating)
             }
         } else {
             newMovieSearchResponse(title, payload) {
-                this.posterUrl = meta.poster
+                this.posterUrl = StremioMapping.previewPoster(meta, fallbackType)
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
                 this.score = scoreFrom10(meta.imdbRating)
             }

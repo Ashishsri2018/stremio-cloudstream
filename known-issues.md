@@ -62,6 +62,19 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
   105), so load-more duplicates the first page.
 - Pluto HLS URLs are time- and geo-bound; they are regenerated per stream request.
 
+## Radio / music
+
+- `music` and `radio` catalogs (radio addons such as Stremio Radios) are surfaced as movie-like
+  single-stream items. They have no EPG, seek, recording or track metadata, and the stream is
+  endless.
+- Audio-only playback relies on ExoPlayer's progressive extractors (MP3/ADTS). There is no audio
+  `ExtractorLinkType` in CloudStream, so ICY/Shoutcast servers with non-standard responses and
+  `.pls`/`.m3u` playlist URLs may fail; HLS radio (`.m3u8`) works through `M3U8`.
+- Radio stations usually carry only `logo` (often square), not `poster`; home/search cards fall
+  back to `logo`/`background` for `music`/`radio` catalogs only.
+- Adding these types surfaces `music`/`radio` rows from every configured catalog addon, like the
+  earlier `tv`/`other` additions. Search still queries only the primary catalog addon.
+
 ## Provider / settings
 
 - **Addon config web UIs are not embedded**: users paste configured manifest URLs. Addons whose

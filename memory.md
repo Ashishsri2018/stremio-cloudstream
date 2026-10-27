@@ -220,3 +220,15 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   battery/network trade-off; documented in `known-issues.md`).
 - 78 JVM tests pass via `streamiolink-tests` (4 new test methods covering the helpers).
   Bumped version 34 → 35.
+
+## 2026-10-27 — Radio/music catalog support — version 36
+- `music` and `radio` catalogs (Stremio Radios) are now in `SUPPORTED_MEDIA_TYPES`, so their home
+  rows and search results load. Their items declare `type: "movie"` and ids such as `radios:…`, so
+  the existing movie-like load path and the stream idPrefix gate work unchanged.
+- Home/search cards for audio catalogs fall back from `poster` to `logo`/`background`
+  (`StremioMapping.previewPoster`); movie/series cards keep the previous poster-only behavior.
+- Audio-only URLs (extension-less Shoutcast/Icecast, `.mp3`) stay `VIDEO` and play through
+  ExoPlayer's progressive MP3/ADTS extractors; HLS radio uses `M3U8`. CloudStream has no audio
+  `ExtractorLinkType`, so ICY/Shoutcast and `.pls`/`.m3u` edge cases are documented in
+  `known-issues.md`.
+- 81 JVM tests pass via `streamiolink-tests` (3 new test methods). Bumped 35 → 36.

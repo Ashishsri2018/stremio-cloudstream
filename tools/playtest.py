@@ -41,7 +41,9 @@ from concurrent.futures import ThreadPoolExecutor
 # ---------------------------------------------------------------------------
 
 DEFAULT_STREAM_USER_AGENT = "okhttp/4.12.0"
-SUPPORTED_MEDIA_TYPES = {"movie", "series"}
+SUPPORTED_MEDIA_TYPES = {
+    "movie", "series", "anime", "anime.movie", "anime.series", "tv", "other", "music", "radio",
+}
 DEFAULT_TIMEOUT_S = 20.0
 STREAM_TIMEOUT_S = 90.0
 PROBE_TIMEOUT_S = 20.0
@@ -425,9 +427,9 @@ def print_manifest_summary(base: str, manifest: dict) -> None:
     print(f"Catalogs : {len(catalogs)} total, {len(loadable)} loadable on home, {len(searchable)} searchable")
     if catalogs and not loadable and not searchable:
         kinds = sorted({(c.get('type') or '?') for c in catalogs})
-        print(f"  NOTE: no movie/series catalogs (types present: {', '.join(kinds)}).")
-        print("  StreamioLink only browses/searches movie & series catalogs, so this")
-        print("  addon is usable as a *source* addon, not as the catalog addon.")
+        print(f"  NOTE: no supported catalogs (types present: {', '.join(kinds)}).")
+        print("  StreamioLink browses/searches movie, series, anime, tv, music, radio and other")
+        print("  catalogs, so this addon is usable as a *source* addon, not as the catalog addon.")
     for catalog in catalogs:
         tags = []
         if catalog_can_load_home(catalog):
