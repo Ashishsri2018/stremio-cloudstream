@@ -27,6 +27,7 @@ import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -430,10 +431,11 @@ class StremioProvider : MainAPI() {
 
     private fun toEpisode(parentType: String, base: String?, video: StremioVideo): Episode? {
         val videoId = video.id ?: return null
+        val parsedIndex = StremioMapping.episodeIndexFromId(videoId)
         return newEpisode(StremioMapping.encodePayload(videoId, parentType, base)) {
             this.name = StremioMapping.episodeName(video) ?: videoId
-            this.season = video.season ?: 1
-            this.episode = video.episode ?: video.number ?: 1
+            this.season = video.season ?: parsedIndex?.first ?: 1
+            this.episode = video.episode ?: video.number ?: parsedIndex?.second ?: 1
             this.posterUrl = video.thumbnail
             this.description = video.overview
             this.score = scoreFrom10(video.rating)
@@ -495,8 +497,7 @@ class StremioProvider : MainAPI() {
                         val manifest = StremioApi.getManifest(base) ?: return@launch
                         manifests[base] = manifest
 
-                        val supportsStream = StremioMapping.manifestSupportsResource(manifest, "stream") &&
-                            type in StremioMapping.resourceTypesFor(manifest, "stream").map { it.lowercase() } &&
+                        val supportsStream = StremioMapping.resourceSupportsType(manifest, "stream", type) &&
                             StremioMapping.idMatchesPrefixes(
                                 payload.id,
                                 StremioMapping.resourceIdPrefixesFor(manifest, "stream")
@@ -509,6 +510,7 @@ class StremioProvider : MainAPI() {
                         // this addon answers rather than after all addons settle, matching the
                         // streaming semantics of the links above.
                         emitSubtitles(
+                            base,
                             StremioMapping.embeddedSubtitles(streams),
                             seenSubtitleUrls,
                             subtitleCallback,
@@ -525,6 +527,16 @@ class StremioProvider : MainAPI() {
                             subtitleProbeSize,
                             publicTrackers,
                         )) {
+                            // YouTube page URLs are HTML, not media files: handing them to
+                            // ExoPlayer as VIDEO always fails. Delegate to CloudStream's YouTube
+                            // extractors and drop the link when extraction fails.
+                            if (StremioMapping.isYouTubeUrl(candidate.url)) {
+                                if (emitYouTube(candidate, subtitleCallback, callback)) {
+                                    emitted.incrementAndGet()
+                                    found.set(true)
+                                }
+                                continue
+                            }
                             if (emitted.incrementAndGet() > MAX_LINKS) break
                             callback.invoke(
                                 newExtractorLink(
@@ -632,8 +644,7 @@ class StremioProvider : MainAPI() {
     ) {
         val type = payload.type.lowercase()
         val subtitleAddons = manifests.filter { (_, manifest) ->
-            StremioMapping.manifestSupportsResource(manifest, "subtitles") &&
-                type in StremioMapping.resourceTypesFor(manifest, "subtitles").map { it.lowercase() } &&
+            StremioMapping.resourceSupportsType(manifest, "subtitles", type) &&
                 StremioMapping.idMatchesPrefixes(payload.id, StremioMapping.resourceIdPrefixesFor(manifest, "subtitles"))
         }
 
@@ -645,23 +656,39 @@ class StremioProvider : MainAPI() {
             subtitleAddons.forEach { (base, _) ->
                 launch {
                     val subtitles = StremioApi.getSubtitles(base, type, payload.id, videoHash, videoSize)
-                    emitSubtitles(subtitles, seen, subtitleCallback)
+                    emitSubtitles(base, subtitles, seen, subtitleCallback)
                 }
             }
         }
     }
 
-    /** Emits [subtitles], deduping by URL against the shared [seen] set. */
+    /** Emits [subtitles], resolving relative URLs against [base] and deduping in [seen]. */
     private suspend fun emitSubtitles(
+        base: String?,
         subtitles: List<StremioSubtitle>,
         seen: MutableSet<String>,
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
         for (subtitle in subtitles) {
-            val url = subtitle.url?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            val rawUrl = subtitle.url?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            val url = StremioMapping.resolveResourceUrl(base, rawUrl)
             if (!seen.add(url)) continue
             subtitleCallback.invoke(newSubtitleFile(StremioMapping.subtitleLanguage(subtitle), url))
         }
+    }
+
+    /** Hands a YouTube stream to CloudStream's extractor; false when it produced nothing. */
+    private suspend fun emitYouTube(
+        candidate: LinkCandidate,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+    ): Boolean = try {
+        loadExtractor(candidate.url, subtitleCallback, callback)
+    } catch (t: CancellationException) {
+        throw t
+    } catch (t: Throwable) {
+        Log.e(TAG, "YouTube extraction failed for ${candidate.url}: ${t.message}")
+        false
     }
 
     /**

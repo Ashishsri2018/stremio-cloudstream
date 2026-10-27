@@ -167,6 +167,17 @@ class StremioStreamTest {
     }
 
     @Test
+    fun detectsYouTubePageUrls() {
+        assertTrue(StremioMapping.isYouTubeUrl("https://www.youtube.com/watch?v=abc123"))
+        assertTrue(StremioMapping.isYouTubeUrl("https://m.youtube.com/watch?v=abc123"))
+        assertTrue(StremioMapping.isYouTubeUrl("https://youtu.be/abc123"))
+        assertTrue(StremioMapping.isYouTubeUrl("https://www.youtube-nocookie.com/embed/abc123"))
+        assertTrue(!StremioMapping.isYouTubeUrl("https://cdn.example/a.m3u8"))
+        assertTrue(!StremioMapping.isYouTubeUrl("https://notyoutube.example/watch?v=abc"))
+        assertTrue(!StremioMapping.isYouTubeUrl(""))
+    }
+
+    @Test
     fun parsesPublicTrackerList() {
         val text = """
             # comment

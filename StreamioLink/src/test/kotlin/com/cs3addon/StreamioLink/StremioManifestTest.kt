@@ -236,10 +236,63 @@ class StremioManifestTest {
     fun otherInferenceDoesNotChangeExistingMediaTypes() {
         val numbered = listOf(StremioVideo(id = "x", season = 1, episode = 1))
         assertFalse(StremioMapping.usesEpisodes("movie", numbered))
-        assertFalse(StremioMapping.usesEpisodes("anime", numbered))
+        assertTrue(StremioMapping.usesEpisodes("anime", numbered))
+        assertFalse(StremioMapping.usesEpisodes("anime.movie", numbered))
         assertFalse(StremioMapping.usesEpisodes("tv", numbered))
         assertTrue(StremioMapping.usesEpisodes("series", emptyList()))
         assertTrue(StremioMapping.usesEpisodes("anime.series", emptyList()))
+    }
+
+    @Test
+    fun resourceSupportsTypeTreatsMissingTypesAsWildcard() {
+        val typeless = StremioMapping.parseManifest(
+            """{"id":"org.typeless","resources":["stream",{"name":"subtitles"}]}"""
+        )
+        assertTrue(StremioMapping.resourceSupportsType(typeless, "stream", "movie"))
+        assertTrue(StremioMapping.resourceSupportsType(typeless, "subtitles", "series"))
+        assertFalse(StremioMapping.resourceSupportsType(typeless, "meta", "movie"))
+
+        assertTrue(StremioMapping.resourceSupportsType(manifest, "stream", "movie"))
+        assertFalse(StremioMapping.resourceSupportsType(manifest, "stream", "series"))
+        assertTrue(StremioMapping.resourceSupportsType(manifest, "subtitles", "series"))
+    }
+
+    @Test
+    fun parsesEpisodeIndexFromVideoId() {
+        assertEquals(2 to 5, StremioMapping.episodeIndexFromId("tt1234567:2:5"))
+        assertEquals(2 to 5, StremioMapping.episodeIndexFromId("kitsu:123:2:5"))
+        assertEquals(0 to 1, StremioMapping.episodeIndexFromId("tt1234567:0:1"))
+        assertEquals(2 to 999, StremioMapping.episodeIndexFromId(" tt1234567:2:999 "))
+        assertNull(StremioMapping.episodeIndexFromId("tt1234567:5"))
+        assertNull(StremioMapping.episodeIndexFromId("kitsu:123:5"))
+        assertNull(StremioMapping.episodeIndexFromId("tt123:abc:5"))
+        assertNull(StremioMapping.episodeIndexFromId(null))
+    }
+
+    @Test
+    fun resolvesRelativeResourceUrlsAgainstAddonBase() {
+        assertEquals(
+            "https://addon.example/subtitles/en.vtt",
+            StremioMapping.resolveResourceUrl("https://addon.example", "/subtitles/en.vtt")
+        )
+        assertEquals(
+            "https://addon.example/subtitles/en.vtt",
+            StremioMapping.resolveResourceUrl("https://addon.example/", "subtitles/en.vtt")
+        )
+        assertEquals(
+            "https://cdn.example/en.vtt",
+            StremioMapping.resolveResourceUrl("https://addon.example", "https://cdn.example/en.vtt")
+        )
+        assertEquals(
+            "//cdn.example/en.vtt",
+            StremioMapping.resolveResourceUrl("https://addon.example", "//cdn.example/en.vtt")
+        )
+        assertEquals(
+            "data:text/vtt;base64,abc",
+            StremioMapping.resolveResourceUrl("https://addon.example", "data:text/vtt;base64,abc")
+        )
+        assertEquals("subtitles/en.vtt", StremioMapping.resolveResourceUrl(null, "subtitles/en.vtt"))
+        assertEquals("subtitles/en.vtt", StremioMapping.resolveResourceUrl("", "subtitles/en.vtt"))
     }
 
     @Test

@@ -41,6 +41,9 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 - **No cross-addon dedup or liveness filtering**: duplicate mirrors and dead links are left to the
   addon servers; a dead link can appear first. `MAX_LINKS = 500` is only an emission ceiling.
 - **`externalUrl` streams are skipped** (not playable through the provider pipeline).
+- **YouTube streams depend on CloudStream's extractors**: `ytId`/YouTube page URLs are delegated to
+  `loadExtractor`; if the installed CloudStream build lacks a working YouTube extractor, those
+  candidates are dropped (other addon links are unaffected).
 - **Magnets carried in `stream.url` are passed through unchanged**: public-tracker enrichment applies
   only to `infoHash`-only streams.
 - **Preferred audio language cannot select Stremio links**: CloudStream's player preference matches
@@ -77,6 +80,9 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
   Requests are bounded by a semaphore (6).
 - **`other` catalogs are global**: any configured catalog addon's `other` rows now appear on home
   and, for the primary addon, in search. This is additive; CNCVerse alone adds 18 VOD rows.
+- **A reload within 60 s can reuse the previous stream response**: the bounded stream cache keeps
+  entries for `STREAM_CACHE_TTL_MS` (60 s) to avoid duplicate addon fan-outs. Play again after a
+  minute, or Reload mirrors, to force a fresh query.
 
 ## Addon-side issues (not plugin bugs)
 

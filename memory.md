@@ -198,3 +198,25 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   - Added `ultra[\s._-]?hd` to `2160` (4K UHD) so `Ultra-HD` releases resolve to 4K instead of falling through to 720.
 - 74 JVM tests pass via `streamiolink-tests`, with 16 new test assertions verifying audio formats, CAM rips, and Ultra HD.
   Bumped version 33 → 34.
+
+## 2026-10-27 — bugG audit fixes: YouTube, episode ids, wildcard types, relative subs — version 35
+- Audited every `bugG.md` concern against the code, Stremio SDK types, and CloudStream 4.8.0
+  (`8bdc599`). Twelve were already fixed; the remaining actionable ones are addressed here.
+- `ytId` / YouTube page URLs (`youtube.com`, `m.youtube.com`, `youtu.be`,
+  `youtube-nocookie.com`) are now handed to CloudStream's `loadExtractor` instead of being emitted
+  as `VIDEO` links, which ExoPlayer cannot play. Extraction failures drop only that candidate.
+- Episode numbers: when `season`/`episode` are null, `StremioMapping.episodeIndexFromId` reads the
+  last two numeric segments of the video id (`tt1234567:2:5`); a season above 100 is rejected so
+  `kitsu:123:5` is not misread as S123E5. `toEpisode` falls back to that index.
+- Resource type checks use `StremioMapping.resourceSupportsType`: a missing/empty `types` list is
+  treated as a wildcard instead of dropping the addon (Stremio requires `types`, but malformed
+  addons are common). Plain `anime` metas also infer episodes from numbered videos.
+- Relative subtitle URLs are resolved against the addon base via
+  `StremioMapping.resolveResourceUrl`; absolute, protocol-relative, and `data:` URLs pass through.
+- `StremioApi.pruneStreams` is serialized with a lock so concurrent queries cannot over-evict the
+  bounded stream cache. `StremioMapping.mapper` is now `internal`.
+- Chose not to change `allCatalogsPage` (#13, not reproducible: CloudStream expands rows via
+  `nameIndex` → `singleCatalogPage`) or the 60 s stream-cache reload window (#11, deliberate
+  battery/network trade-off; documented in `known-issues.md`).
+- 78 JVM tests pass via `streamiolink-tests` (4 new test methods covering the helpers).
+  Bumped version 34 → 35.

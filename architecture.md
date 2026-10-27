@@ -79,8 +79,13 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    back to the payload type), so an `anime` catalog item that resolves to a series keeps its episode
    list and its episode links use the series type. `other` metas are common in VOD bridge addons
    such as CNCVerse: they stay movie-like unless their `videos` contain a numbered episode with an
-   id, in which case `StremioMapping.usesEpisodes(type, videos)` loads a series. The episode payload
-   keeps `other`, so the bridge's own stream endpoint is used.
+   id, in which case `StremioMapping.usesEpisodes(type, videos)` loads a series. Plain `anime` metas
+   use the same numbered-video inference, so addons that keep the catalog type in `meta.type`
+   still expose their episodes. The episode payload keeps `other`, so the bridge's own stream
+   endpoint is used.
+   Episode `season`/`episode` come from the meta fields; when an addon leaves them null and only
+   encodes them in the video id (`tt1234567:2:5`), `StremioMapping.episodeIndexFromId` reads the
+   last two numeric segments, so a multi-season show does not collapse to S01E01.
    Live `tv` channels (Pluto TV and similar) are the exception: their meta carries no `videos`, so
    `StremioMapping.usesEpisodes` (series and not `LIVE_MEDIA_TYPES`) makes each channel a single
    movie-like item whose play action hits `/stream/tv/{id}.json` for one endless HLS URL.
@@ -99,8 +104,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    `stream` resource and matching type/idPrefixes are queried
    in parallel **per addon** (`supervisorScope`, so one addon's failure cannot cancel the others) —
    each addon emits its `ExtractorLink`s as soon as it responds, so a slow addon never delays the
-   fast ones while still being awaited (up to `STREAM_TIMEOUT_MS`). Every addon request passes an
-   explicit per-call timeout (`app.get(url, timeout = seconds)`), because CloudStream's NiceHttp
+   fast ones while still being awaited (up to `STREAM_TIMEOUT_MS`). Resource eligibility uses
+   `StremioMapping.resourceSupportsType`: a missing/empty type list is treated as a wildcard so a
+   schema-invalid addon is still queried instead of being silently dropped. Every addon request
+   passes an explicit per-call timeout (`app.get(url, timeout = seconds)`), because CloudStream's NiceHttp
    `app` defaults to `timeout = 0`, which leaves OkHttp's 10 s read timeout in place and silently
    drops slow aggregators. URL streams become `ExtractorLink`s; the kind (M3U8/DASH/VIDEO) is
    derived purely from the URL/filename via `StremioMapping.guessStreamKind` — there is **no**
@@ -109,7 +116,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    over semantic path hints: `.mpd` → DASH and `.m3u8` → HLS win outright, a known video-container
    extension (`.mp4/.mkv/.webm/…`) → VIDEO, and only then do the `/hls`, `/playlist`, `mpegurl`
    path hints and a `.m3u8` hidden in a proxy query apply. This keeps a DASH manifest under an
-   `/hls/` path DASH and a direct file in a `playlist` folder VIDEO. Addon "nothing found"
+   `/hls/` path DASH and a direct file in a `playlist` folder VIDEO. `ytId` streams are YouTube
+   **page** URLs, not media files: the provider hands them to CloudStream's `loadExtractor`
+   (YouTube extractors) instead of emitting them as `VIDEO`, and drops the link if extraction
+   fails. Addon "nothing found"
    sentinel streams (URLs under `/assets/stream-errors/`, e.g. Yukistreams' `[YS INFO] No streams
    found`, or placeholder health endpoints such as Plavio's `https://sports.highfly.to/health`) are dropped by `StremioMapping.isSentinelStream` instead of being offered as a link
    that plays a stock error clip. Stream JSON is cached in memory per addon/id for 60 seconds
@@ -151,7 +161,9 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    with the stream addons: emission starts once the fastest **stream-capable** addon has answered
    (`firstAddonDone` `CompletableDeferred`, completed only by an addon that declared the `stream`
    resource and reached its stream query) using the probe hints available at that point, instead of
-   waiting for every (possibly 90 s) stream addon. Catalog/meta-only addons (e.g. Cinemeta, first in
+   waiting for every (possibly 90 s) stream addon. A relative subtitle URL is resolved against its
+   addon's base (`StremioMapping.resolveResourceUrl`) before emission, while absolute and
+   protocol-relative URLs pass through unchanged. Catalog/meta-only addons (e.g. Cinemeta, first in
    the list by default) must not release the gate, or subtitles would be queried with null hints
    before any stream has been seen; if no addon supports streams, a fallback `joinAll` releases the
    gate once every addon has settled so the subtitle coroutine cannot hang. A second gate,
@@ -182,7 +194,8 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 - **Cancellation is preserved**: every `StremioApi` catch rethrows `CancellationException` instead of
   swallowing it as an empty result.
 - **Bounded caches**: the manifest cache is pruned + capped (32), the stream cache evicts expired and
-  then oldest entries instead of being cleared wholesale, and the failure-back-off map is bounded (256).
+  then oldest entries instead of being cleared wholesale (pruning is serialized so concurrent
+  queries cannot over-evict), and the failure-back-off map is bounded (256).
 - **Dead-link guard**: `StremioMapping.isPlayableStreamUrl` drops non-`http(s)`/whitespace-containing
   URLs (e.g. CNCVerse's literal-space URLs) before they reach the player.
 

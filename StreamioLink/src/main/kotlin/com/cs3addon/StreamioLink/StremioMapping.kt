@@ -10,7 +10,7 @@ import java.net.URLEncoder
  */
 object StremioMapping {
 
-    val mapper = jacksonObjectMapper()
+    internal val mapper = jacksonObjectMapper()
 
     /**
      * Catalog types that can be mapped onto Cloudstream. `anime` catalogs carry the same
@@ -50,9 +50,17 @@ object StremioMapping {
     private val whitespaceRegex = Regex("""\s+""")
     private val whitespaceInUrlRegex = Regex("""\s""")
     private val publicTrackerUrlRegex = Regex("""^(?:udp|https?|wss)://\S+$""", RegexOption.IGNORE_CASE)
+    private val absoluteUrlSchemeRegex = Regex("""^[a-z][a-z0-9+.-]*:""", RegexOption.IGNORE_CASE)
+    private val youtubeUrlRegex = Regex(
+        """^https?://(?:[a-z0-9-]+\.)?(?:youtube\.com|youtube-nocookie\.com|youtu\.be)/""",
+        RegexOption.IGNORE_CASE,
+    )
 
     /** Cap on how many language tags are shown for one stream, keeping the label compact. */
     private const val MAX_LANGUAGE_TAGS = 3
+
+    /** Highest season accepted when inferring a video index from its id (see [episodeIndexFromId]). */
+    private const val MAX_PARSED_SEASON = 100
 
     private val languageTokenRegex = Regex("""\p{IsLatin}+""")
     private val dualAudioRegex = Regex("""(?:dual|multi)[\s\-_.]*audio""", RegexOption.IGNORE_CASE)
@@ -300,6 +308,18 @@ object StremioMapping {
     fun idMatchesPrefixes(id: String, prefixes: List<String>): Boolean =
         prefixes.isEmpty() || prefixes.any { id.startsWith(it) }
 
+    /**
+     * True when [manifest] declares [resource] and either advertises no types for it or one of
+     * them matches [type]. The protocol requires `types` on the manifest and on object-form
+     * resources; treating an empty list as "all types" keeps malformed addons usable instead of
+     * silently dropping them.
+     */
+    fun resourceSupportsType(manifest: StremioManifest, resource: String, type: String): Boolean {
+        if (!manifestSupportsResource(manifest, resource)) return false
+        val types = resourceTypesFor(manifest, resource).map { it.lowercase() }
+        return types.isEmpty() || type.trim().lowercase() in types
+    }
+
     // ---------------------------------------------------------------- catalogs
 
     fun catalogCanLoadHome(catalog: StremioCatalog): Boolean {
@@ -330,7 +350,11 @@ object StremioMapping {
 
     fun usesEpisodes(type: String?, videos: List<StremioVideo>?): Boolean {
         if (usesEpisodes(type)) return true
-        if (type?.trim()?.lowercase() != "other") return false
+        val normalized = type?.trim()?.lowercase()
+        // `other` VOD bridges and plain `anime` metas are the non-standard types whose catalogs
+        // can hold both movies and series; numbered videos reveal the series shape. `anime`
+        // catalog items usually declare `series` in their meta, but some addons keep `anime`.
+        if (normalized != "other" && normalized != "anime") return false
         return videos.orEmpty().any { video ->
             !video.id.isNullOrBlank() &&
                 ((video.season ?: 0) > 0 || (video.episode ?: 0) > 0)
@@ -472,6 +496,19 @@ object StremioMapping {
             return null
         }
         return url.ifEmpty { null }
+    }
+
+    /**
+     * Resolves a resource URL (e.g. a subtitle from an addon response) against the addon [base].
+     * Absolute URLs, protocol-relative URLs (`//host/...`) and other schemes (`data:`) are
+     * returned unchanged. Relative paths resolve from the addon root, matching where Stremio
+     * resources live (`{base}/subtitles/...`).
+     */
+    fun resolveResourceUrl(base: String?, rawUrl: String): String {
+        val url = rawUrl.trim()
+        if (url.isEmpty() || url.startsWith("//") || absoluteUrlSchemeRegex.containsMatchIn(url)) return url
+        val root = base?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() } ?: return url
+        return if (url.startsWith("/")) "$root$url" else "$root/$url"
     }
 
     fun buildCatalogUrl(base: String, type: String, catalogId: String, extra: String? = null): String {
@@ -643,6 +680,9 @@ object StremioMapping {
 
     fun isTorrentUrl(url: String): Boolean = url.startsWith("magnet:", ignoreCase = true)
 
+    /** True when [url] is a YouTube page link that must go through CloudStream's extractor. */
+    fun isYouTubeUrl(url: String): Boolean = youtubeUrlRegex.containsMatchIn(url.trim())
+
     fun requestHeadersFor(stream: StremioStream): Map<String, String> {
         val hints = stream.behaviorHints
         // Prefer proxyHeaders.request; some addons emit a top-level `headers` instead.
@@ -798,6 +838,22 @@ object StremioMapping {
         "continuing", "returning series", "in production", "planned", "upcoming", "airing" ->
             ShowState.Ongoing
         else -> null
+    }
+
+    /**
+     * Season/episode encoded in a Stremio video id (`tt1234567:2:5`, `kitsu:123:2:5`).
+     *
+     * Some addons leave `season`/`episode` null and only encode them in the video id. The last
+     * two colon-separated segments are used; a season above [MAX_PARSED_SEASON] is rejected so a
+     * bare prefixed id such as `kitsu:123:5` is not mistaken for season 123, episode 5.
+     */
+    fun episodeIndexFromId(videoId: String?): Pair<Int, Int>? {
+        val parts = videoId?.trim()?.split(':') ?: return null
+        if (parts.size < 3) return null
+        val season = parts[parts.size - 2].toIntOrNull() ?: return null
+        val episode = parts[parts.size - 1].toIntOrNull() ?: return null
+        if (season < 0 || season > MAX_PARSED_SEASON || episode < 0) return null
+        return season to episode
     }
 
     /**

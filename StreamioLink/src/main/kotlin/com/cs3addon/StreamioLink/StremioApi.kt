@@ -70,6 +70,7 @@ object StremioApi {
     private data class CachedStreams(val streams: List<StremioStream>, val fetchedAt: Long)
 
     private val streamCache = ConcurrentHashMap<String, CachedStreams>()
+    private val streamCacheLock = Any()
 
     // ---------------------------------------------------------------- failure back-off
 
@@ -308,12 +309,18 @@ object StremioApi {
         }
     }
 
-    /** Drops expired entries first, then the oldest, keeping [streamCache] bounded. */
+    /**
+     * Drops expired entries first, then the oldest, keeping [streamCache] bounded. Serialized
+     * so two queries completing at the same time cannot both enter the eviction loop and evict
+     * more entries than intended.
+     */
     private fun pruneStreams(now: Long) {
-        streamCache.entries.removeAll { now - it.value.fetchedAt >= STREAM_CACHE_TTL_MS }
-        while (streamCache.size >= STREAM_CACHE_MAX) {
-            val oldest = streamCache.entries.minByOrNull { it.value.fetchedAt } ?: return
-            streamCache.remove(oldest.key)
+        synchronized(streamCacheLock) {
+            streamCache.entries.removeAll { now - it.value.fetchedAt >= STREAM_CACHE_TTL_MS }
+            while (streamCache.size >= STREAM_CACHE_MAX) {
+                val oldest = streamCache.entries.minByOrNull { it.value.fetchedAt } ?: return
+                streamCache.remove(oldest.key)
+            }
         }
     }
 
