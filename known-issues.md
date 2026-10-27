@@ -73,14 +73,15 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 - Radio stations usually carry only `logo` (often square), not `poster`; home/search cards fall
   back to `logo`/`background` for `music`/`radio` catalogs only.
 - Adding these types surfaces `music`/`radio` rows from every configured catalog addon, like the
-  earlier `tv`/`other` additions. Search still queries only the primary catalog addon.
+  earlier `tv`/`other` additions. Search queries every enabled catalog addon (and the metadata
+  addon), so audio items from all of them are included.
 
 ## Channels
 
 - `channel` catalogs are additive like `tv`/`other`: a channel catalog with no required extra now
   appears on home for every configured catalog addon.
 - Channel catalogs with a required `search` (e.g. Reddate YT's "YouTube channels") are search-only
-  and are queried only when that addon is the primary catalog addon, matching movie/series search.
+  and are queried whenever their addon is enabled, matching movie/series search.
 - A channel loads as a series only when its meta has numbered `videos` (YouTube uploads); channels
   without videos stay movie-like single streams. `number`-only videos are not inferred (same as
   `other`/`anime`); Reddate YT uses `season`/`episode`.
@@ -106,7 +107,10 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
   catalog addons are fetched on the first home load; lazy rows are impossible through the API.
   Requests are bounded by a semaphore (6).
 - **`other` catalogs are global**: any configured catalog addon's `other` rows now appear on home
-  and, for the primary addon, in search. This is additive; CNCVerse alone adds 18 VOD rows.
+  and in search. This is additive; CNCVerse alone adds 18 VOD rows.
+- **Search can show cross-addon duplicates**: results from every enabled catalog addon (plus the
+  metadata addon) are concatenated in settings order and deduped only within one addon. The same
+  title can appear once per addon with a different id.
 - **A reload within 60 s can reuse the previous stream response**: the bounded stream cache keeps
   entries for `STREAM_CACHE_TTL_MS` (60 s) to avoid duplicate addon fan-outs. Play again after a
   minute, or Reload mirrors, to force a fresh query.

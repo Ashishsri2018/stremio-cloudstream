@@ -47,8 +47,9 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Cloudstream provider that plays content through Stremio addons.
  *
- * - The first catalog addon (default: Cinemeta) supplies the primary home page, search and
- *   metadata; any additional catalog addons append their rows to the home page.
+ * - Every enabled catalog addon contributes home rows; search queries all of them plus the
+ *   configured metadata addon. The first enabled catalog addon (default: Cinemeta) remains the
+ *   primary addon for home ordering and metadata.
  * - Every configured source addon (plus catalog addons whose per-entry "use as source" is on)
  *   is queried for streams.
  */
@@ -282,14 +283,30 @@ class StremioProvider : MainAPI() {
         if (query.isBlank()) return emptyList()
         val encoded = StremioMapping.encodeQueryValue(query)
 
-        val fromCatalog = searchAddon(StremioSettings.catalogUrl(), encoded)
-        if (fromCatalog.isNotEmpty()) return fromCatalog
-
-        val metaBase = StremioSettings.metaUrl()
-        if (StremioMapping.normalizeAddonUrl(metaBase) != StremioMapping.normalizeAddonUrl(StremioSettings.catalogUrl())) {
-            return searchAddon(metaBase, encoded)
+        // Search every enabled catalog addon, primary first, then the separately configured
+        // metadata addon (skipped when it is already in the catalog list). Addons are queried
+        // concurrently, while each addon's catalogs share the bounded catalog semaphore.
+        val bases = LinkedHashSet<String>()
+        StremioSettings.catalogUrls().forEach { url ->
+            StremioMapping.normalizeAddonUrl(url)?.let { bases.add(it) }
         }
-        return emptyList()
+        StremioMapping.normalizeAddonUrl(StremioSettings.metaUrl())?.let { bases.add(it) }
+        if (bases.isEmpty()) return emptyList()
+
+        return supervisorScope {
+            bases.map { base ->
+                async {
+                    try {
+                        searchAddon(base, encoded)
+                    } catch (t: CancellationException) {
+                        throw t
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "Search addon $base failed: ${t.message}")
+                        emptyList()
+                    }
+                }
+            }.awaitAll().flatten()
+        }
     }
 
     private suspend fun searchAddon(base: String, encodedQuery: String): List<SearchResponse> {

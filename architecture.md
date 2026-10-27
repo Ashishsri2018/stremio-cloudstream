@@ -11,8 +11,8 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 
 ## Responsibilities
 - Register one CloudStream provider (`StreamioLink`) into the app.
-- Read one or more Stremio **catalog addons** (the first enabled is primary for home ordering,
-  search and metadata) for home rows, search and metadata.
+- Read one or more Stremio **catalog addons** for home rows and search; the first enabled addon is
+  primary for home ordering and metadata.
 - Fan out stream/subtitle requests to N Stremio **source addons** and merge results.
 - Persist addon configuration via the CloudStream data store.
 
@@ -25,10 +25,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 - `StremioSettings` — persisted keys and defaults. Catalog and source addons have an `enabled`
   flag (persisted as the `streamiolink_disabled_catalog_urls` / `streamiolink_disabled_source_urls`
   URL lists). Disabled entries stay configured and visible in settings but are skipped everywhere:
-  a disabled catalog contributes no home rows, is not the primary search/metadata addon and is not
-  queried for streams, even when its `useAsSource` flag is on. The primary catalog is the first
-  *enabled* entry, so disabling it promotes the next enabled one; the settings UI prevents
-  disabling the last enabled catalog.
+  a disabled catalog contributes no home rows, is not searched and is not queried for streams,
+  even when its `useAsSource` flag is on. The primary catalog is the first *enabled* entry, so
+  disabling it promotes the next enabled one; the settings UI prevents disabling the last enabled
+  catalog.
 - `StremioSettingsDialog` — programmatic (no XML resources) settings UI. Each catalog/source row is
   one line: URL, enable checkbox, edit (`✏️`) and delete (`🗑️`) buttons. Editing changes only the
   URL, keeping the entry's position, `useAsSource` and enabled state. Disabling reuses the cached
@@ -67,10 +67,11 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    at once opened as many sockets. `getMainPageTimeoutMs = 90 s` / `searchTimeoutMs = 60 s` cap a
    stuck catalog. (Lazy row loading is **not** possible: CloudStream's `HomeViewModel.load()` calls
    `getMainPage(1, null)` once and renders every returned row; expansion only paginates existing rows.)
-2. Search: the primary catalog addon's search-capable catalogs (including
-   `anime.series`/`anime.movie` and `other`) → `/catalog/{type}/{id}/search=...json`, keeping any
-   preset genre extra (falls back to the metadata addon). Additional catalog addons only contribute
-   home rows.
+2. Search: every enabled catalog addon's search-capable catalogs (including
+   `anime.series`/`anime.movie` and `other`), plus the configured metadata addon when it is not
+   already in the catalog list → `/catalog/{type}/{id}/search=...json`, keeping any preset genre
+   extra. Addons are queried concurrently and results are concatenated in settings order (primary
+   first), deduped only within one addon, so the same title can appear once per addon.
    Quick search is **not** implemented: `hasQuickSearch` is left at its default `false`, so the
    single-provider quick-search screen (reached from the home search icon) searches on submit via the
    normal `search()` path instead of on every keystroke. Advertising it without overriding

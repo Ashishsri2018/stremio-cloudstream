@@ -41,7 +41,7 @@ object StremioSettingsDialog {
             setPadding(dp(20), dp(8), dp(20), 0)
         }
 
-        container.addView(label(context, "Catalog addons (first enabled = primary home, search & metadata)"))
+        container.addView(label(context, "Catalog addons (all enabled = home & search; first enabled = primary metadata)"))
         val catalogsContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
         }

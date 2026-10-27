@@ -5,7 +5,7 @@ A [CloudStream 3](https://github.com/recloudstream/cloudstream) plugin that turn
 It supports **movies, series, anime, live TV, radio and YouTube/channel catalogs**, including
 **torrent/P2P** sources.
 
-- **catalog addon** powers the home page, search and metadata (series episodes and live TV channels included).
+- **catalog addons** power the home page, search and metadata (series episodes and live TV channels included); search queries every enabled catalog addon.
 - **N source addons** are queried in parallel for every play and their streams are merged.
 - **Subtitles** are pulled from any configured addon that declares the `subtitles` resource, plus
   any subtitles embedded per-stream by the stream addons.
@@ -29,8 +29,8 @@ Open **Settings → Plugins → StreamioLink** (gear icon) and fill in:
 
 | Field | Meaning |
 |---|---|
-| Catalog addon URL | Provides home rows, search and metadata. Defaults to `https://v3-cinemeta.strem.io` |
-| Metadata fallback addon | Used when the catalog addon has no `meta` resource. Defaults to Cinemeta |
+| Catalog addon URL | Provides home rows and search; the first enabled one is primary for metadata. Defaults to `https://v3-cinemeta.strem.io` |
+| Metadata fallback addon | Used when the catalog addon has no `meta` resource; also always included in search. Defaults to Cinemeta |
 | Source addons | Any number of addons queried for streams and subtitles |
 | Use catalog addon as source | Also query the catalog addon for streams (default on) |
 
@@ -75,7 +75,7 @@ These addons were live-playtested against this plugin (movie `tt0111161` / serie
 `tt0903747:1:1`). Their exact configs are recorded in
 [`tools/test-addons.json`](tools/test-addons.json).
 
-**Catalog addon** (home rows, search, metadata)
+**Catalog addon** (home rows, search, metadata; all enabled ones are searched)
 
 | Addon | Homepage |
 |---|---|

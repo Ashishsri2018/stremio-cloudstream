@@ -248,3 +248,14 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   `season`/`episode`).
 - 83 JVM tests pass via `streamiolink-tests` (2 new test methods); existing media types re-asserted
   unchanged. Bumped 36 → 37. CI run `40491088787` passed and published version 37.
+
+## 2026-10-27 — Search across all enabled catalogs — version 38
+- `search()` now queries every enabled catalog addon (settings order, primary first) instead of
+  only the primary, and always includes the separately configured metadata addon when its
+  normalized URL is not already in that list.
+- Addons are searched concurrently with `supervisorScope`; one failing addon is logged and does
+  not cancel the others. Per-catalog requests still share the existing `catalogSemaphore` (6) and
+  the whole search stays under `searchTimeoutMs = 60 s`.
+- Results are concatenated in addon order; dedupe remains per addon only, so cross-addon
+  duplicates are kept intentionally (different addons may return different ids for the same title).
+- 83 JVM tests pass via `streamiolink-tests` (no mapping-layer changes). Bumped 37 → 38.

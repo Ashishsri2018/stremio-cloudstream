@@ -5,8 +5,9 @@ import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
 
 /**
  * Persisted plugin settings, stored in the Cloudstream data store.
- * One or more catalog addons (the first enabled one is the primary home/meta/search addon) plus
- * any number of source addons. Each catalog addon can additionally be used as a stream source.
+ * One or more catalog addons (all enabled ones power home rows and search; the first enabled one
+ * is the primary home/metadata addon) plus any number of source addons. Each catalog addon can
+ * additionally be used as a stream source.
  * Entries can be disabled without being removed: they stay configured (and visible in settings)
  * but are skipped everywhere.
  */
