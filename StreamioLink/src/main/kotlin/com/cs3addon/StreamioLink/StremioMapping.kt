@@ -18,10 +18,12 @@ object StremioMapping {
      * excluding them dropped whole rows from addons such as AIOMetadata. `other` is used by
      * VOD bridge addons such as CNCVerse. `music`/`radio` are audio catalogs (radio addons such
      * as Stremio Radios); their items are movie-like single streams and their catalogs carry
-     * the station logos rather than posters.
+     * the station logos rather than posters. `channel` covers YouTube-style channels (uploads in
+     * `videos`) as well as live channel catalogs; [usesEpisodes] decides per item.
      */
     val SUPPORTED_MEDIA_TYPES = setOf(
         "movie", "series", "anime", "anime.movie", "anime.series", "tv", "other", "music", "radio",
+        "channel",
     )
 
     /** Catalog types whose items are audio-only (radio stations, music streams). */
@@ -361,10 +363,12 @@ object StremioMapping {
     fun usesEpisodes(type: String?, videos: List<StremioVideo>?): Boolean {
         if (usesEpisodes(type)) return true
         val normalized = type?.trim()?.lowercase()
-        // `other` VOD bridges and plain `anime` metas are the non-standard types whose catalogs
-        // can hold both movies and series; numbered videos reveal the series shape. `anime`
-        // catalog items usually declare `series` in their meta, but some addons keep `anime`.
-        if (normalized != "other" && normalized != "anime") return false
+        // `other` VOD bridges, plain `anime` and `channel` metas are the non-standard types whose
+        // catalogs can hold both movies and series; numbered videos reveal the series shape.
+        // `anime` catalog items usually declare `series` in their meta, but some addons keep
+        // `anime`. `channel` items without videos stay movie-like live channels, while
+        // YouTube-style channels expose their uploads as numbered videos.
+        if (normalized != "other" && normalized != "anime" && normalized != "channel") return false
         return videos.orEmpty().any { video ->
             !video.id.isNullOrBlank() &&
                 ((video.season ?: 0) > 0 || (video.episode ?: 0) > 0)
@@ -492,6 +496,7 @@ object StremioMapping {
         "anime" -> "Anime"
         "anime.movie" -> "Anime Movies"
         "anime.series" -> "Anime Series"
+        "channel" -> "Channels"
         else -> type.orEmpty().replaceFirstChar { it.uppercase() }.ifBlank { "Other" }
     }
 

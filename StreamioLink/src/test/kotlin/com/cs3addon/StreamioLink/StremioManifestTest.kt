@@ -292,6 +292,86 @@ class StremioManifestTest {
     }
 
     @Test
+    fun channelCatalogsAreSupportedButOnlyEpisodicWithVideos() {
+        assertTrue(StremioMapping.isSupportedMediaType("channel"))
+        assertTrue(StremioMapping.isSupportedMediaType("CHANNEL"))
+        // Channel is not unconditionally a series: live channels without uploads stay movie-like.
+        assertFalse(StremioMapping.isSeriesType("channel"))
+        assertFalse(StremioMapping.usesEpisodes("channel"))
+        assertFalse(StremioMapping.usesEpisodes("channel", emptyList()))
+        assertFalse(StremioMapping.usesEpisodes("channel", null))
+        assertFalse(
+            StremioMapping.usesEpisodes(
+                "channel",
+                listOf(StremioVideo(id = "yt:abc")),
+            )
+        )
+        assertTrue(
+            StremioMapping.usesEpisodes(
+                "channel",
+                listOf(StremioVideo(id = "yt:abc", season = 1, episode = 1)),
+            )
+        )
+        assertTrue(
+            StremioMapping.usesEpisodes(
+                "channel",
+                listOf(StremioVideo(id = "yt:abc", season = 1)),
+            )
+        )
+        assertFalse(
+            StremioMapping.usesEpisodes(
+                "channel",
+                listOf(StremioVideo(id = null, season = 1, episode = 1)),
+            )
+        )
+
+        val searchOnly = StremioCatalog(
+            type = "channel",
+            id = "yt_channels",
+            name = "YouTube channels",
+            extra = listOf(StremioExtra(name = "search", isRequired = true)),
+        )
+        assertFalse(StremioMapping.catalogCanLoadHome(searchOnly))
+        assertTrue(StremioMapping.catalogSupportsSearch(searchOnly))
+
+        val loadable = StremioCatalog(type = "channel", id = "channels", name = "Channels")
+        assertTrue(StremioMapping.catalogCanLoadHome(loadable))
+        assertFalse(StremioMapping.catalogSupportsSearch(loadable))
+
+        val channelManifest = StremioMapping.parseManifest(
+            """{"id":"org.channel","types":["channel"],"resources":["catalog","meta",{"name":"stream","types":["channel"],"idPrefixes":["yt:"]}]}"""
+        )
+        assertTrue(StremioMapping.resourceSupportsType(channelManifest, "stream", "channel"))
+        assertFalse(StremioMapping.resourceSupportsType(channelManifest, "stream", "movie"))
+        assertTrue(
+            StremioMapping.idMatchesPrefixes(
+                "yt:abc",
+                StremioMapping.resourceIdPrefixesFor(channelManifest, "stream"),
+            )
+        )
+        assertFalse(
+            StremioMapping.idMatchesPrefixes(
+                "tt123",
+                StremioMapping.resourceIdPrefixesFor(channelManifest, "stream"),
+            )
+        )
+    }
+
+    @Test
+    fun channelInferenceDoesNotChangeExistingMediaTypes() {
+        val numbered = listOf(StremioVideo(id = "x", season = 1, episode = 1))
+        assertFalse(StremioMapping.usesEpisodes("movie", numbered))
+        assertFalse(StremioMapping.usesEpisodes("anime.movie", numbered))
+        assertFalse(StremioMapping.usesEpisodes("tv", numbered))
+        assertFalse(StremioMapping.usesEpisodes("music", numbered))
+        assertFalse(StremioMapping.usesEpisodes("radio", numbered))
+        assertTrue(StremioMapping.usesEpisodes("anime", numbered))
+        assertTrue(StremioMapping.usesEpisodes("other", numbered))
+        assertTrue(StremioMapping.usesEpisodes("channel", numbered))
+        assertTrue(StremioMapping.usesEpisodes("series", emptyList()))
+    }
+
+    @Test
     fun resourceSupportsTypeTreatsMissingTypesAsWildcard() {
         val typeless = StremioMapping.parseManifest(
             """{"id":"org.typeless","resources":["stream",{"name":"subtitles"}]}"""

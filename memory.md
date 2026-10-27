@@ -234,3 +234,17 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 - 81 JVM tests pass via `streamiolink-tests` (3 new test methods). Bumped 35 → 36. CI run
   `40486937856` passed and published version 36; Radios and Flix-Music are recorded in
   `tools/test-addons.json` under `musicRadio`.
+
+## 2026-10-27 — Channel (YouTube) support — version 37
+- `channel` is now in `SUPPORTED_MEDIA_TYPES`, so channel catalogs are home-loadable/searchable.
+  It is deliberately NOT in `isSeriesType`/`LIVE_MEDIA_TYPES`: `usesEpisodes(type, videos)` only
+  treats a channel as a series when its meta has numbered videos. YouTube-style channels expose
+  uploads as `season`/`episode` videos and load as series; live channels without videos stay
+  movie-like single streams.
+- Channel catalogs with required `search` (Reddate YT's "YouTube channels") remain search-only;
+  channel search uses the existing primary-catalog-only path.
+- Search cards for channel items stay movie-like until `load()` sees the meta videos, matching the
+  existing `other`/`anime` behavior. `number`-only channel videos are not inferred (Reddate YT uses
+  `season`/`episode`).
+- 83 JVM tests pass via `streamiolink-tests` (2 new test methods); existing media types re-asserted
+  unchanged. Bumped 36 → 37.

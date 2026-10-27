@@ -75,6 +75,20 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 - Adding these types surfaces `music`/`radio` rows from every configured catalog addon, like the
   earlier `tv`/`other` additions. Search still queries only the primary catalog addon.
 
+## Channels
+
+- `channel` catalogs are additive like `tv`/`other`: a channel catalog with no required extra now
+  appears on home for every configured catalog addon.
+- Channel catalogs with a required `search` (e.g. Reddate YT's "YouTube channels") are search-only
+  and are queried only when that addon is the primary catalog addon, matching movie/series search.
+- A channel loads as a series only when its meta has numbered `videos` (YouTube uploads); channels
+  without videos stay movie-like single streams. `number`-only videos are not inferred (same as
+  `other`/`anime`); Reddate YT uses `season`/`episode`.
+- Search cards for channel items are movie-like until opened, because catalog previews carry no
+  `videos`; `load()` then upgrades them to a series. This is the existing `other`/`anime` pattern.
+- YouTube upload playback depends on CloudStream's built-in YouTube extractor. `externalUrl`
+  duplicates are skipped, and channel `links`/EPG metadata is not implemented.
+
 ## Provider / settings
 
 - **Addon config web UIs are not embedded**: users paste configured manifest URLs. Addons whose

@@ -38,11 +38,13 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 ## Data Flow
 1. Home: each catalog addon's manifest → loadable catalogs → `/catalog/{type}/{id}.json` → rows.
    A catalog is loadable when its type is `movie`, `series`, `anime`, `anime.movie`,
-   `anime.series`, `tv`, `music`, `radio` or `other` and every required extra can be satisfied
-   from the manifest itself (`StremioMapping.catalogPresetExtra`: its `default`, else the first
-   `options` entry). `music`/`radio` catalogs come from radio addons: their items are movie-like
-   single-stream stations, and home/search cards fall back from `poster` to `logo`/`background`
-   because stations usually carry only a logo.
+   `anime.series`, `tv`, `music`, `radio`, `channel` or `other` and every required extra can be
+   satisfied from the manifest itself (`StremioMapping.catalogPresetExtra`: its `default`, else the
+   first `options` entry). `music`/`radio` catalogs come from radio addons: their items are
+   movie-like single-stream stations, and home/search cards fall back from `poster` to
+   `logo`/`background` because stations usually carry only a logo. `channel` covers YouTube-style
+   channels and live channel lists; a channel is only treated as a series when its meta carries
+   numbered videos (see step 3).
    `search`/`similar`/`calendarVideosIds` therefore stay off the home page. The resolved preset is
    sent as a path extra (`genre=Fall%202026`), so genre-locked catalogs (TMDB By Year, By Language,
    TVDB Genres, MAL Seasons/Studios) still get rows fixed to that one value; `showInHome:false`
@@ -84,8 +86,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    such as CNCVerse: they stay movie-like unless their `videos` contain a numbered episode with an
    id, in which case `StremioMapping.usesEpisodes(type, videos)` loads a series. Plain `anime` metas
    use the same numbered-video inference, so addons that keep the catalog type in `meta.type`
-   still expose their episodes. The episode payload keeps `other`, so the bridge's own stream
-   endpoint is used.
+   still expose their episodes. `channel` metas use it too: YouTube-style channels expose their
+   uploads as numbered `videos` and load as a series, while live channels with no videos stay
+   movie-like single streams. The episode payload keeps the parent type (`other`/`anime`/`channel`),
+   so the owning addon's own stream endpoint is used.
    Episode `season`/`episode` come from the meta fields; when an addon leaves them null and only
    encodes them in the video id (`tt1234567:2:5`), `StremioMapping.episodeIndexFromId` reads the
    last two numeric segments, so a multi-season show does not collapse to S01E01.

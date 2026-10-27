@@ -2,7 +2,8 @@
 
 A [CloudStream 3](https://github.com/recloudstream/cloudstream) plugin that turns any
 [Stremio addon](https://stremio.github.io/stremio-addon-sdk/) ecosystem into a CloudStream provider.
-It supports **movies, series, anime, live TV and radio**, including **torrent/P2P** sources.
+It supports **movies, series, anime, live TV, radio and YouTube/channel catalogs**, including
+**torrent/P2P** sources.
 
 - **catalog addon** powers the home page, search and metadata (series episodes and live TV channels included).
 - **N source addons** are queried in parallel for every play and their streams are merged.
@@ -43,6 +44,9 @@ Paste either a base URL (`https://addon.example`) or a full manifest URL
 - **Radio / music**: `music`/`radio`-type catalogs (e.g. Stremio Radios) are shown as single-stream
   stations. Audio-only streams play progressively (MP3/AAC) or through HLS; there is no EPG, seek
   or track metadata.
+- **Channels / YouTube**: `channel`-type metas load as a series when they expose numbered uploads
+  (e.g. Reddate YT); live channels without videos stay single-stream items. `ytId` streams are
+  handed to CloudStream's YouTube extractor, and `externalUrl` duplicates are skipped.
 - **Direct HTTP(S) streams**: HLS (`.m3u8`), DASH (`.mpd`) and progressive files (`mp4`/`mkv`/...).
   The kind is detected from the URL/filename (no network probe), so extension-less debrid links
   are handled without extra requests.
@@ -52,7 +56,7 @@ Paste either a base URL (`https://addon.example`) or a full manifest URL
   to a magnet and handed to CloudStream's built-in torrent engine, which streams them from a local
   server. CloudStream asks for consent before starting a torrent session.
 - **Skipped for now**: `externalUrl` streams and addon configuration UIs. YouTube (`ytId`) links
-  are opened as YouTube URLs.
+  are handed to CloudStream's YouTube extractor.
 
 ## Example addons
 

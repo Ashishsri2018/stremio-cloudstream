@@ -84,5 +84,27 @@
         "notes": "Same addon as the catalog: streams are looked up by lfm: id; sampled responses were empty."
       }
     ]
+  },
+
+  "youtube": {
+    "_comment": "Reddate YT: movie catalogs (Trending/Music/Gaming/News/Sports/Science) plus a search-only channel catalog. Streams carry ytId; the externalUrl duplicate is skipped.",
+    "testIds": {
+      "video": "yt:M4qX5wzx-wY",
+      "channel": "ytc:UCRr1xG_2WIDs18a6cIiCxeA"
+    },
+    "catalogs": [
+      {
+        "name": "Reddate YT",
+        "url": "https://tv.reddate.xyz/yt/1wn8C-5JX7tRXiOFZMwy-c6DI1ar2Jg1GIHLL4eJZZbJN_7aJESLAkVgdV_JWrnOsa0IjKQRPeglfAmp3ItMmUNxv1NuxE00p-eF6xu6QEB74Xu7pgX_N6jb-RqHGsNC3HcZFspjuFgWGzv7qBaGZzSMZhCNuVnlQKebQYaZuncxiQqylEgBbq9MI3DmoY2X5C8vtPUu2h1SK1meMNyBwTKMFljXSB8qQ1QLZ4A4DL2dKmc5-0z66_NOGf8/manifest.json",
+        "notes": "YouTube catalogs. Movie rows load on home; 'YouTube channels' has required search, so it is search-only. Channel metas expose uploads as numbered videos and load as a series."
+      }
+    ],
+    "sources": [
+      {
+        "name": "Reddate YT",
+        "url": "https://tv.reddate.xyz/yt/1wn8C-5JX7tRXiOFZMwy-c6DI1ar2Jg1GIHLL4eJZZbJN_7aJESLAkVgdV_JWrnOsa0IjKQRPeglfAmp3ItMmUNxv1NuxE00p-eF6xu6QEB74Xu7pgX_N6jb-RqHGsNC3HcZFspjuFgWGzv7qBaGZzSMZhCNuVnlQKebQYaZuncxiQqylEgBbq9MI3DmoY2X5C8vtPUu2h1SK1meMNyBwTKMFljXSB8qQ1QLZ4A4DL2dKmc5-0z66_NOGf8/manifest.json",
+        "notes": "Same addon as the catalog: video and channel-upload ids stream via ytId through CloudStream's YouTube extractor."
+      }
+    ]
   }
 }
