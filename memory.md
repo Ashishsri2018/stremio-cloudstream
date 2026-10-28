@@ -273,4 +273,6 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 - Provider is advertised under `TvType.Others`, `TvType.Live` and `TvType.Torrent`; Gradle
   `tvTypes` now lists `Movie`, `TvSeries`, `Live`, `Torrent`. Torrent advertisement is metadata
   only — existing `infoHash`/magnet emission is unchanged.
-- 86 JVM tests pass via `streamiolink-tests` (3 new/updated test methods). Bumped 38 → 39.
+- 86 JVM tests pass via `streamiolink-tests` (3 new/updated test methods). Bumped 38 → 39. CI run
+  `40628014593` passed and published version 39; `builds/plugins.json` lists
+  `Movie`/`TvSeries`/`Live`/`Torrent`.
