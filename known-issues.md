@@ -54,7 +54,7 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 
 ## Live TV
 
-- Live channels are movie-like single streams: no EPG, no seek, no recording.
+- Live channels load as `TvType.Live` single streams: no EPG, no seek, no recording.
 - Pluto `tv/pluto` has ~1561 channels and does not support `skip`, so that row cannot paginate.
 - Adding `tv` to the supported types also surfaces another catalog addon's `tv` rows (e.g.
   CNCVerse) when it is used as a catalog addon.
@@ -83,8 +83,9 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 - Channel catalogs with a required `search` (e.g. Reddate YT's "YouTube channels") are search-only
   and are queried whenever their addon is enabled, matching movie/series search.
 - A channel loads as a series only when its meta has numbered `videos` (YouTube uploads); channels
-  without videos stay movie-like single streams. `number`-only videos are not inferred (same as
-  `other`/`anime`); Reddate YT uses `season`/`episode`.
+  without videos stay single streams (`TvType.Live` when `behaviorHints.isLive` is set).
+  `number`-only videos are not inferred (same as `other`/`anime`); Reddate YT uses
+  `season`/`episode`.
 - Search cards for channel items are movie-like until opened, because catalog previews carry no
   `videos`; `load()` then upgrades them to a series. This is the existing `other`/`anime` pattern.
 - YouTube upload playback depends on CloudStream's built-in YouTube extractor. `externalUrl`
@@ -95,9 +96,10 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 - **Addon config web UIs are not embedded**: users paste configured manifest URLs. Addons whose
   `/manifest.json` is a catch-all stub will "load" even with a bad config, then silently return no
   streams (Meteor is a known example: malformed `languageFormat` → `401 invalid session`).
-- **Provider category**: `TvType.Others` makes CloudStream list StreamioLink in its own category
-  rather than mixing items into Movies/Series; `loadLinksTimeoutMs` is raised to 180 s and
-  `StremioApi` uses 20 s metadata / 90 s stream timeouts.
+- **Provider categories**: `TvType.Others`, `TvType.Live` and `TvType.Torrent` make CloudStream list
+  StreamioLink in those categories (torrent streams are advertised even though results are regular
+  movie/series/live items); `loadLinksTimeoutMs` is raised to 180 s and `StremioApi` uses 20 s
+  metadata / 90 s stream timeouts.
 - **No quick search**: `hasQuickSearch` stays `false`; the search screen submits instead of
   searching on each keystroke. Advertising the capability without implementing it throws.
 - **Some Stremio metadata has no CloudStream field**: `videos[].seasonPoster` is ignored, and

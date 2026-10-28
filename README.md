@@ -39,8 +39,9 @@ Paste either a base URL (`https://addon.example`) or a full manifest URL
 
 ## What plays
 
-- **Live TV**: `tv`-type catalogs (e.g. Pluto TV, Plavio sports) are shown as single-stream
-  channels. Live playback has no EPG, seek or recording; channel URLs may be time/geo-bound.
+- **Live TV**: `tv`/`live`-type catalogs (e.g. Pluto TV, Plavio sports), plus items declaring
+  `behaviorHints.isLive`, are shown as single-stream live channels. Live playback has no EPG, seek
+  or recording; channel URLs may be time/geo-bound.
 - **Radio / music**: `music`/`radio`-type catalogs (e.g. Stremio Radios) are shown as single-stream
   stations. Audio-only streams play progressively (MP3/AAC) or through HLS; there is no EPG, seek
   or track metadata.
@@ -54,7 +55,8 @@ Paste either a base URL (`https://addon.example`) or a full manifest URL
   return direct URLs, so they work out of the box.
 - **P2P / torrent addons** (e.g. Meteor, Torrentio without debrid): `infoHash` streams are converted
   to a magnet and handed to CloudStream's built-in torrent engine, which streams them from a local
-  server. CloudStream asks for consent before starting a torrent session.
+  server. CloudStream asks for consent before starting a torrent session. StreamioLink is advertised
+  under the **Others**, **Live** and **Torrent** provider categories.
 - **Skipped for now**: `externalUrl` streams and addon configuration UIs. YouTube (`ytId`) links
   are handed to CloudStream's YouTube extractor.
 

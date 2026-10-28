@@ -259,3 +259,18 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 - Results are concatenated in addon order; dedupe remains per addon only, so cross-addon
   duplicates are kept intentionally (different addons may return different ids for the same title).
 - 83 JVM tests pass via `streamiolink-tests` (no mapping-layer changes). Bumped 37 → 38.
+
+## 2026-10-28 — Live media type + torrent category — version 39
+- `live` is now a supported catalog/media type. `StremioMapping.mediaShape` classifies items once:
+  numbered episode lists win as series, then `tv`/`live` or `meta.behaviorHints.isLive` become
+  `TvType.Live`, and everything else stays movie-like. Search uses `newLiveSearchResponse`; load
+  uses `newLiveStreamLoadResponse`, whose `dataUrl` is the encoded payload.
+- Live addons disagree about the type advertised for `meta`/`stream`/`subtitles`, so
+  `resolveResourceType` resolves it through the cached manifest with the fallback
+  `live → tv → channel → movie`. Non-live requests still require an exact type match. All three
+  resources use the resolved type.
+- `behaviorHints.isLive` is parsed on catalog previews and meta details.
+- Provider is advertised under `TvType.Others`, `TvType.Live` and `TvType.Torrent`; Gradle
+  `tvTypes` now lists `Movie`, `TvSeries`, `Live`, `Torrent`. Torrent advertisement is metadata
+  only — existing `infoHash`/magnet emission is unchanged.
+- 86 JVM tests pass via `streamiolink-tests` (3 new/updated test methods). Bumped 38 → 39.

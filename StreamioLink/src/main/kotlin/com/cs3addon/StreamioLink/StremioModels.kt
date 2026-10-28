@@ -59,6 +59,7 @@ data class StremioMetaPreview(
     @JsonProperty("imdbRating") val imdbRating: String? = null,
     @JsonProperty("genres") val genres: List<String>? = null,
     @JsonProperty("runtime") val runtime: String? = null,
+    @JsonProperty("behaviorHints") val behaviorHints: StremioBehaviorHints? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -87,6 +88,7 @@ data class StremioMetaDetails(
     @JsonProperty("trailers") val trailers: List<StremioTrailer>? = null,
     @JsonProperty("trailerStreams") val trailerStreams: List<StremioTrailerStream>? = null,
     @JsonProperty("videos") val videos: List<StremioVideo>? = null,
+    @JsonProperty("behaviorHints") val behaviorHints: StremioBehaviorHints? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -184,6 +186,8 @@ data class StremioBehaviorHints(
     @JsonProperty("proxyHeaders") val proxyHeaders: StremioProxyHeaders? = null,
     /** Some addons put request headers here instead of under `proxyHeaders.request`. */
     @JsonProperty("headers") val headers: Map<String, String>? = null,
+    /** Live-channel hint on meta items (official protocol: `meta.behaviorHints.isLive`). */
+    @JsonProperty("isLive") val isLive: Boolean? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

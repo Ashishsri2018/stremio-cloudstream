@@ -42,7 +42,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 DEFAULT_STREAM_USER_AGENT = "okhttp/4.12.0"
 SUPPORTED_MEDIA_TYPES = {
-    "movie", "series", "anime", "anime.movie", "anime.series", "tv", "other", "music", "radio",
+    "movie", "series", "anime", "anime.movie", "anime.series", "tv", "live", "other", "music",
+    "radio",
 }
 DEFAULT_TIMEOUT_S = 20.0
 STREAM_TIMEOUT_S = 90.0

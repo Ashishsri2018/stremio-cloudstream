@@ -19,6 +19,8 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
+import com.lagradost.cloudstream3.newLiveSearchResponse
+import com.lagradost.cloudstream3.newLiveStreamLoadResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSubtitleFile
@@ -58,7 +60,7 @@ class StremioProvider : MainAPI() {
     override var name = "StreamioLink"
     override var lang = "en"
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Others)
+    override val supportedTypes = setOf(TvType.Others, TvType.Live, TvType.Torrent)
     override val loadLinksTimeoutMs = 180_000L
 
     /** A stuck catalog must not hold the whole home load for the default 120 s. */
@@ -255,20 +257,36 @@ class StremioProvider : MainAPI() {
         base: String,
     ): SearchResponse? {
         val id = meta.id ?: return null
-        val type = meta.type ?: fallbackType
+        val metaType = meta.type?.takeIf { it.isNotBlank() } ?: fallbackType
+        // Keep the live catalog type in the payload when the meta is live-ish but declares a
+        // generic `movie`; otherwise load() would lose the live shape on the next round-trip.
+        val type = if (StremioMapping.isLiveType(fallbackType) && !StremioMapping.usesEpisodes(metaType)) {
+            fallbackType
+        } else {
+            metaType
+        }
         val payload = StremioMapping.encodePayload(id, type, base)
         val title = meta.name?.takeIf { it.isNotBlank() } ?: id
-        return if (StremioMapping.usesEpisodes(type)) {
-            newTvSeriesSearchResponse(title, payload) {
-                this.posterUrl = StremioMapping.previewPoster(meta, fallbackType)
+        val poster = StremioMapping.previewPoster(meta, fallbackType)
+        val score = scoreFrom10(meta.imdbRating)
+        return when (
+            StremioMapping.mediaShape(type, isLiveHint = meta.behaviorHints?.isLive == true)
+        ) {
+            StremioMapping.MediaShape.Series -> newTvSeriesSearchResponse(title, payload) {
+                this.posterUrl = poster
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
-                this.score = scoreFrom10(meta.imdbRating)
+                this.score = score
             }
-        } else {
-            newMovieSearchResponse(title, payload) {
-                this.posterUrl = StremioMapping.previewPoster(meta, fallbackType)
+
+            StremioMapping.MediaShape.Live -> newLiveSearchResponse(title, payload) {
+                this.posterUrl = poster
+                this.score = score
+            }
+
+            StremioMapping.MediaShape.Movie -> newMovieSearchResponse(title, payload) {
+                this.posterUrl = poster
                 this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
-                this.score = scoreFrom10(meta.imdbRating)
+                this.score = score
             }
         }
     }
@@ -347,13 +365,41 @@ class StremioProvider : MainAPI() {
         val title = meta.name?.takeIf { it.isNotBlank() } ?: payload.id
         // Catalog types such as `anime` (or items without a type) only reveal whether they hold
         // episodes once the meta response is in; trust meta.type for the response shape and for
-        // the episode payloads, so series are not loaded as movies. Live `tv` channels have no
-        // videos and are movie-like single streams.
+        // the episode payloads, so series are not loaded as movies. Live `tv`/`live` channels
+        // have no episode list and load as a single live stream; `behaviorHints.isLive` is an
+        // additional live signal used by addons whose type stays `movie`/`channel`.
         val type = meta.type?.takeIf { it.isNotBlank() } ?: payload.type
+        val shape = StremioMapping.mediaShape(
+            type,
+            meta.videos,
+            isLiveHint = meta.behaviorHints?.isLive == true ||
+                StremioMapping.isLiveType(payload.type),
+        )
 
-        return if (StremioMapping.usesEpisodes(type, meta.videos)) {
-            val episodes = meta.videos.orEmpty().mapNotNull { toEpisode(type, payload.base, it) }
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+        return when (shape) {
+            StremioMapping.MediaShape.Series -> {
+                val episodes = meta.videos.orEmpty().mapNotNull { toEpisode(type, payload.base, it) }
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                    this.posterUrl = meta.poster
+                    this.backgroundPosterUrl = meta.background
+                    this.logoUrl = meta.logo
+                    this.plot = meta.description
+                    this.year = StremioMapping.yearFromReleaseInfo(meta.releaseInfo)
+                    this.duration = StremioMapping.runtimeMinutes(meta.runtime)
+                    this.score = scoreFromMeta(meta)
+                    this.tags = meta.genres
+                    this.contentRating = contentRatingFrom(meta)
+                    this.actors = actorsFrom(meta)
+                    this.trailers = trailersFrom(meta)
+                    this.showStatus = when (StremioMapping.showStateFrom(meta.status)) {
+                        StremioMapping.ShowState.Completed -> ShowStatus.Completed
+                        StremioMapping.ShowState.Ongoing -> ShowStatus.Ongoing
+                        null -> null
+                    }
+                }
+            }
+
+            StremioMapping.MediaShape.Live -> newLiveStreamLoadResponse(title, url, url) {
                 this.posterUrl = meta.poster
                 this.backgroundPosterUrl = meta.background
                 this.logoUrl = meta.logo
@@ -365,14 +411,9 @@ class StremioProvider : MainAPI() {
                 this.contentRating = contentRatingFrom(meta)
                 this.actors = actorsFrom(meta)
                 this.trailers = trailersFrom(meta)
-                this.showStatus = when (StremioMapping.showStateFrom(meta.status)) {
-                    StremioMapping.ShowState.Completed -> ShowStatus.Completed
-                    StremioMapping.ShowState.Ongoing -> ShowStatus.Ongoing
-                    null -> null
-                }
             }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
+
+            StremioMapping.MediaShape.Movie -> newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = meta.poster
                 this.backgroundPosterUrl = meta.background
                 this.logoUrl = meta.logo
@@ -435,7 +476,13 @@ class StremioProvider : MainAPI() {
         StremioMapping.normalizeAddonUrl(StremioSettings.metaUrl())?.let { candidates.add(it) }
 
         for (base in candidates) {
-            val meta = StremioApi.getMeta(base, payload.type, payload.id) ?: continue
+            // Live catalogs are inconsistent about the type advertised for their meta
+            // resource; resolve it through the cached manifest before building the URL.
+            val manifest = StremioApi.getManifest(base)
+            val metaType = manifest?.let {
+                StremioMapping.resolveResourceType(it, "meta", payload.type)
+            } ?: payload.type
+            val meta = StremioApi.getMeta(base, metaType, payload.id) ?: continue
             // Some addons return a stub meta (name == id, no videos) for ids they only
             // stream; skip those instead of breaking a series that a later addon knows.
             val hasTitle = !meta.name.isNullOrBlank()
@@ -514,15 +561,16 @@ class StremioProvider : MainAPI() {
                         val manifest = StremioApi.getManifest(base) ?: return@launch
                         manifests[base] = manifest
 
-                        val supportsStream = StremioMapping.resourceSupportsType(manifest, "stream", type) &&
-                            StremioMapping.idMatchesPrefixes(
+                        val streamType = StremioMapping.resolveResourceType(manifest, "stream", type)
+                            ?: return@launch
+                        if (!StremioMapping.idMatchesPrefixes(
                                 payload.id,
                                 StremioMapping.resourceIdPrefixesFor(manifest, "stream")
                             )
-                        if (!supportsStream) return@launch
+                        ) return@launch
 
                         val addonName = manifest.name?.takeIf { it.isNotBlank() } ?: hostOf(base)
-                        val streams = StremioApi.getStreams(base, type, payload.id)
+                        val streams = StremioApi.getStreams(base, streamType, payload.id)
                         // Embedded subtitles travel on the stream itself; emit them as soon as
                         // this addon answers rather than after all addons settle, matching the
                         // streaming semantics of the links above.
@@ -660,9 +708,15 @@ class StremioProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
         val type = payload.type.lowercase()
-        val subtitleAddons = manifests.filter { (_, manifest) ->
-            StremioMapping.resourceSupportsType(manifest, "subtitles", type) &&
-                StremioMapping.idMatchesPrefixes(payload.id, StremioMapping.resourceIdPrefixesFor(manifest, "subtitles"))
+        val subtitleAddons = manifests.mapNotNull { (base, manifest) ->
+            val subtitleType = StremioMapping.resolveResourceType(manifest, "subtitles", type)
+                ?: return@mapNotNull null
+            if (!StremioMapping.idMatchesPrefixes(
+                    payload.id,
+                    StremioMapping.resourceIdPrefixesFor(manifest, "subtitles")
+                )
+            ) return@mapNotNull null
+            base to subtitleType
         }
 
         // Emit each addon's subtitles as soon as that addon answers, mirroring the stream
@@ -670,9 +724,9 @@ class StremioProvider : MainAPI() {
         // slowest one returned (up to STREAM_TIMEOUT_MS). `seen` is a concurrent set and the
         // callback is already invoked from several stream coroutines, so this is safe.
         coroutineScope {
-            subtitleAddons.forEach { (base, _) ->
+            subtitleAddons.forEach { (base, subtitleType) ->
                 launch {
-                    val subtitles = StremioApi.getSubtitles(base, type, payload.id, videoHash, videoSize)
+                    val subtitles = StremioApi.getSubtitles(base, subtitleType, payload.id, videoHash, videoSize)
                     emitSubtitles(base, subtitles, seen, subtitleCallback)
                 }
             }

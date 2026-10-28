@@ -6,7 +6,7 @@ dependencies {
 }
 
 // Use an integer for version numbers
-version = 38
+version = 39
 
 cloudstream {
     description = "Play streams from Stremio addons. Configure one catalog addon (default: Cinemeta) plus as many source addons as you like in the settings."
@@ -21,7 +21,7 @@ cloudstream {
      **/
     status = 1
 
-    tvTypes = listOf("Movie", "TvSeries")
+    tvTypes = listOf("Movie", "TvSeries", "Live", "Torrent")
     language = "en"
 
     iconUrl = "https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/StreamioLink/icon.png"

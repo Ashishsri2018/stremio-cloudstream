@@ -38,7 +38,7 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
 ## Data Flow
 1. Home: each catalog addon's manifest → loadable catalogs → `/catalog/{type}/{id}.json` → rows.
    A catalog is loadable when its type is `movie`, `series`, `anime`, `anime.movie`,
-   `anime.series`, `tv`, `music`, `radio`, `channel` or `other` and every required extra can be
+   `anime.series`, `tv`, `live`, `music`, `radio`, `channel` or `other` and every required extra can be
    satisfied from the manifest itself (`StremioMapping.catalogPresetExtra`: its `default`, else the
    first `options` entry). `music`/`radio` catalogs come from radio addons: their items are
    movie-like single-stream stations, and home/search cards fall back from `poster` to
@@ -82,21 +82,27 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    Plavio, while Cinemeta/TMDB only know `tt…` ids. Stub metas (blank name, or a series meta with no
    videos / a name equal to the id) are skipped so the next addon can answer: Plavio's `/meta` is a
    stub for VOD ids but complete for live channels. The response shape follows `meta.type` (falling
-   back to the payload type), so an `anime` catalog item that resolves to a series keeps its episode
-   list and its episode links use the series type. `other` metas are common in VOD bridge addons
+   back to the payload type) plus `meta.behaviorHints.isLive` through
+   `StremioMapping.mediaShape`, so an `anime` catalog item that resolves to a series keeps its
+   episode list and its episode links use the series type. `other` metas are common in VOD bridge addons
    such as CNCVerse: they stay movie-like unless their `videos` contain a numbered episode with an
    id, in which case `StremioMapping.usesEpisodes(type, videos)` loads a series. Plain `anime` metas
    use the same numbered-video inference, so addons that keep the catalog type in `meta.type`
    still expose their episodes. `channel` metas use it too: YouTube-style channels expose their
    uploads as numbered `videos` and load as a series, while live channels with no videos stay
-   movie-like single streams. The episode payload keeps the parent type (`other`/`anime`/`channel`),
+   single streams (`TvType.Live` when hinted). The episode payload keeps the parent type
+   (`other`/`anime`/`channel`),
    so the owning addon's own stream endpoint is used.
    Episode `season`/`episode` come from the meta fields; when an addon leaves them null and only
    encodes them in the video id (`tt1234567:2:5`), `StremioMapping.episodeIndexFromId` reads the
    last two numeric segments, so a multi-season show does not collapse to S01E01.
-   Live `tv` channels (Pluto TV and similar) are the exception: their meta carries no `videos`, so
-   `StremioMapping.usesEpisodes` (series and not `LIVE_MEDIA_TYPES`) makes each channel a single
-   movie-like item whose play action hits `/stream/tv/{id}.json` for one endless HLS URL.
+   Live `tv`/`live` channels (Pluto TV and similar), and items whose meta declares
+   `behaviorHints.isLive`, are the exception: their meta carries no episode list, so
+   `StremioMapping.mediaShape` classifies them as `TvType.Live`. Each channel loads through
+   `newLiveStreamLoadResponse` and its play action hits `/stream/{resolved type}/{id}.json` for one
+   endless HLS URL. Live resource types are resolved through the cached manifest with the fallback
+   `live → tv → channel → movie`, because live addons do not agree on the type they advertise for
+   `meta`/`stream`/`subtitles`.
    Metadata: catalog previews and metas expose `imdbRating`; `StremioMapping.ratingFrom10` parses
    it (0..10, null when absent/unrated) and both home/search cards and load responses map it to
    CloudStream's `Score`; `app_extras.ratings` (Nuvio) is the fallback. Load responses also map
@@ -113,8 +119,10 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    in parallel **per addon** (`supervisorScope`, so one addon's failure cannot cancel the others) —
    each addon emits its `ExtractorLink`s as soon as it responds, so a slow addon never delays the
    fast ones while still being awaited (up to `STREAM_TIMEOUT_MS`). Resource eligibility uses
-   `StremioMapping.resourceSupportsType`: a missing/empty type list is treated as a wildcard so a
-   schema-invalid addon is still queried instead of being silently dropped. Every addon request
+   `StremioMapping.resolveResourceType`: a missing/empty type list is treated as a wildcard so a
+   schema-invalid addon is still queried instead of being silently dropped, and live requests fall
+   back across `live → tv → channel → movie`. The resolved type is also used in the actual
+   `/stream` request. Every addon request
    passes an explicit per-call timeout (`app.get(url, timeout = seconds)`), because CloudStream's NiceHttp
    `app` defaults to `timeout = 0`, which leaves OkHttp's 10 s read timeout in place and silently
    drops slow aggregators. URL streams become `ExtractorLink`s; the kind (M3U8/DASH/VIDEO) is
@@ -162,8 +170,9 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    mutex (at most one 5 s request per process; on failure the stale list is served and the regular
    30 s back-off applies). Addon trackers stay permissive and come first; public entries are
    scheme-filtered and deduped. Magnet URLs carried in `stream.url` are passed through unchanged.
-5. Subtitles: addons declaring `subtitles` resource → `/subtitles/{type}/{id}.json`,
-   enriched with `videoHash`/`videoSize` from the first stream when available. The canonical
+5. Subtitles: addons declaring `subtitles` resource → `/subtitles/{resolved type}/{id}.json`
+   (same live fallback as streams), enriched with `videoHash`/`videoSize` from the first stream
+   when available. The canonical
    hint-bearing URL is tried first; if the addon answers with a non-JSON body (some, e.g.
    PlavioHD, implement only the extra-less route and return an HTML 404 for any path extra),
    `StremioApi.getSubtitles` retries the plain URL (`StremioMapping.buildSubtitlesUrlCandidates`).

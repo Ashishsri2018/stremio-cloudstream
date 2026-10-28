@@ -796,6 +796,38 @@ class StremioStreamTest {
     }
 
     @Test
+    fun parsesLiveBehaviorHintsOnMetaAndCatalogItems() {
+        val meta = StremioMapping.parseMeta(
+            """
+            {
+              "meta": {
+                "id": "live-news",
+                "type": "movie",
+                "name": "Live News",
+                "behaviorHints": { "isLive": true }
+              }
+            }
+            """.trimIndent()
+        )
+        assertEquals("live-news", meta?.id)
+        assertEquals(true, meta?.behaviorHints?.isLive)
+
+        val catalog = StremioMapping.parseCatalog(
+            """
+            {
+              "metas": [
+                { "id": "live-news", "type": "live", "name": "Live News",
+                  "behaviorHints": { "isLive": true } },
+                { "id": "tt1", "type": "movie", "name": "Movie" }
+              ]
+            }
+            """.trimIndent()
+        )
+        assertEquals(true, catalog[0].behaviorHints?.isLive)
+        assertNull(catalog[1].behaviorHints)
+    }
+
+    @Test
     fun parsesAiometadataMetadata() {
         val meta = StremioMapping.parseMeta(
             """

@@ -29,7 +29,8 @@ class StremioManifestTest {
             { "type": "anime", "id": "airing", "name": "Anime Airing" },
             { "type": "anime.series", "id": "anime-search", "extra": [ { "name": "search", "isRequired": true } ] },
             { "type": "tv", "id": "live", "name": "Live TV", "extra": [ { "name": "search", "isRequired": false } ] },
-            { "type": "tv", "id": "live-popular", "name": "Live TV Popular" }
+            { "type": "tv", "id": "live-popular", "name": "Live TV Popular" },
+            { "type": "live", "id": "live-channels", "name": "Live Channels", "extra": [ { "name": "search", "isRequired": false } ] }
           ],
           "idPrefixes": ["tt"]
         }
@@ -159,11 +160,14 @@ class StremioManifestTest {
     @Test
     fun liveTvChannelsAreMovieLikeSingleStreams() {
         assertTrue(StremioMapping.isSupportedMediaType("tv"))
+        assertTrue(StremioMapping.isSupportedMediaType("live"))
         assertTrue(StremioMapping.isLiveType("TV"))
+        assertTrue(StremioMapping.isLiveType("Live"))
         assertFalse(StremioMapping.isLiveType("series"))
         // `tv` still matches isSeriesType for protocol shape, but must not load as an
         // episode list: Pluto-style metas carry no videos and stream one endless HLS URL.
         assertFalse(StremioMapping.usesEpisodes("tv"))
+        assertFalse(StremioMapping.usesEpisodes("live"))
         assertTrue(StremioMapping.usesEpisodes("series"))
         assertTrue(StremioMapping.usesEpisodes("anime.series"))
         assertFalse(StremioMapping.usesEpisodes("movie"))
@@ -171,8 +175,56 @@ class StremioManifestTest {
         val byId = catalogs.associateBy { it.id }
         assertTrue(StremioMapping.catalogCanLoadHome(byId.getValue("live")))
         assertTrue(StremioMapping.catalogCanLoadHome(byId.getValue("live-popular")))
+        assertTrue(StremioMapping.catalogCanLoadHome(byId.getValue("live-channels")))
         assertTrue(StremioMapping.catalogSupportsSearch(byId.getValue("live")))
         assertFalse(StremioMapping.catalogSupportsSearch(byId.getValue("live-popular")))
+        assertTrue(StremioMapping.catalogSupportsSearch(byId.getValue("live-channels")))
+    }
+
+    @Test
+    fun mediaShapeTreatsLiveTypesAndHintsAsLive() {
+        assertEquals(StremioMapping.MediaShape.Live, StremioMapping.mediaShape("tv"))
+        assertEquals(StremioMapping.MediaShape.Live, StremioMapping.mediaShape("LIVE"))
+        assertEquals(StremioMapping.MediaShape.Live, StremioMapping.mediaShape("movie", isLiveHint = true))
+        assertEquals(
+            StremioMapping.MediaShape.Live,
+            StremioMapping.mediaShape("channel", emptyList(), isLiveHint = true),
+        )
+        assertEquals(StremioMapping.MediaShape.Movie, StremioMapping.mediaShape("movie"))
+        assertEquals(StremioMapping.MediaShape.Movie, StremioMapping.mediaShape("music"))
+        assertEquals(StremioMapping.MediaShape.Movie, StremioMapping.mediaShape("radio"))
+        // An explicit episode list must win over a live hint so real series stay series.
+        val numbered = listOf(StremioVideo(id = "x", season = 1, episode = 1))
+        assertEquals(
+            StremioMapping.MediaShape.Series,
+            StremioMapping.mediaShape("series", numbered, isLiveHint = true),
+        )
+    }
+
+    @Test
+    fun liveResourcesFallBackAcrossLiveAliases() {
+        val tvOnly = StremioMapping.parseManifest(
+            """{"id":"org.tv","types":["tv"],"resources":["catalog",{"name":"meta","types":["tv"]},{"name":"stream","types":["tv"]}]}"""
+        )
+        assertEquals("tv", StremioMapping.resolveResourceType(tvOnly, "stream", "live"))
+        assertEquals("tv", StremioMapping.resolveResourceType(tvOnly, "meta", "live"))
+        assertEquals("tv", StremioMapping.resolveResourceType(tvOnly, "stream", "tv"))
+        assertNull(StremioMapping.resolveResourceType(tvOnly, "stream", "series"))
+
+        val movieOnly = StremioMapping.parseManifest(
+            """{"id":"org.movie","types":["movie"],"resources":[{"name":"stream","types":["movie","channel"]}]}"""
+        )
+        // A `live` catalog whose stream resource is declared only as `movie`/`channel` still
+        // works; `channel` is preferred over `movie`.
+        assertEquals("channel", StremioMapping.resolveResourceType(movieOnly, "stream", "live"))
+        assertEquals("movie", StremioMapping.resolveResourceType(movieOnly, "stream", "movie"))
+        assertNull(StremioMapping.resolveResourceType(movieOnly, "stream", "series"))
+        assertNull(StremioMapping.resolveResourceType(movieOnly, "subtitles", "live"))
+
+        val wildcard = StremioMapping.parseManifest(
+            """{"id":"org.wild","resources":[{"name":"stream"}]}"""
+        )
+        assertEquals("live", StremioMapping.resolveResourceType(wildcard, "stream", "live"))
     }
 
     @Test

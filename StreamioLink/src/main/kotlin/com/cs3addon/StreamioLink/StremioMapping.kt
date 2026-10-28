@@ -22,18 +22,22 @@ object StremioMapping {
      * `videos`) as well as live channel catalogs; [usesEpisodes] decides per item.
      */
     val SUPPORTED_MEDIA_TYPES = setOf(
-        "movie", "series", "anime", "anime.movie", "anime.series", "tv", "other", "music", "radio",
-        "channel",
+        "movie", "series", "anime", "anime.movie", "anime.series", "tv", "live", "other", "music",
+        "radio", "channel",
     )
 
     /** Catalog types whose items are audio-only (radio stations, music streams). */
     val AUDIO_MEDIA_TYPES = setOf("music", "radio")
 
     /**
-     * Live-channel types. A `tv` meta carries no `videos`; it is a single endless stream (Pluto TV
-     * and similar addons), so it is surfaced as a movie-like item instead of an empty series.
+     * Live-channel types. `tv` is the protocol type; some addons use `live` for the same kind of
+     * endless single-stream channel. Neither carries episode metadata, so they are surfaced as
+     * live items instead of empty series. `meta.behaviorHints.isLive` is honored separately.
      */
-    val LIVE_MEDIA_TYPES = setOf("tv")
+    val LIVE_MEDIA_TYPES = setOf("tv", "live")
+
+    /** Resource types tried, in order, when an addon does not advertise the live type verbatim. */
+    private val LIVE_RESOURCE_TYPE_FALLBACKS = listOf("live", "tv", "channel", "movie")
 
     /**
      * Stremio CDNs (e.g. the `hakunaymatata.com` hosts behind MovieBox/VidLink) return
@@ -317,16 +321,38 @@ object StremioMapping {
         prefixes.isEmpty() || prefixes.any { id.startsWith(it) }
 
     /**
-     * True when [manifest] declares [resource] and either advertises no types for it or one of
-     * them matches [type]. The protocol requires `types` on the manifest and on object-form
-     * resources; treating an empty list as "all types" keeps malformed addons usable instead of
-     * silently dropping them.
+     * Resolves the type to use when calling [resource] on [manifest], or null when the addon
+     * cannot serve it. The protocol requires `types` on the manifest and on object-form
+     * resources; an empty list means "all types" (keeps malformed addons usable).
+     *
+     * Live addons are inconsistent about the type they advertise for stream/meta/subtitles:
+     * a catalog declared as `live` may expose those resources as `tv`, `channel` or even `movie`.
+     * For live-ish requests we therefore fall back across the live aliases instead of silently
+     * dropping the addon. Non-live requests still require an exact match.
      */
-    fun resourceSupportsType(manifest: StremioManifest, resource: String, type: String): Boolean {
-        if (!manifestSupportsResource(manifest, resource)) return false
-        val types = resourceTypesFor(manifest, resource).map { it.lowercase() }
-        return types.isEmpty() || type.trim().lowercase() in types
+    fun resolveResourceType(
+        manifest: StremioManifest,
+        resource: String,
+        requestedType: String,
+    ): String? {
+        if (!manifestSupportsResource(manifest, resource)) return null
+        val types = resourceTypesFor(manifest, resource)
+            .map { it.trim().lowercase() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        val requested = requestedType.trim().lowercase()
+        if (requested.isEmpty()) return null
+        if (types.isEmpty()) return requested
+        if (requested in types) return requested
+        if (requested in LIVE_MEDIA_TYPES) {
+            return LIVE_RESOURCE_TYPE_FALLBACKS.firstOrNull { it in types }
+        }
+        return null
     }
+
+    /** True when [manifest] can serve [type] for [resource] (see [resolveResourceType]). */
+    fun resourceSupportsType(manifest: StremioManifest, resource: String, type: String): Boolean =
+        resolveResourceType(manifest, resource, type) != null
 
     // ---------------------------------------------------------------- catalogs
 
@@ -355,8 +381,8 @@ object StremioMapping {
         LIVE_MEDIA_TYPES.contains(type?.trim()?.lowercase())
 
     /**
-     * True when the item should be loaded as a series with episodes. Live `tv` channels are
-     * single-stream items, so they are excluded even though [isSeriesType] matches `tv`.
+     * True when the item should be loaded as a series with episodes. Live `tv`/`live` channels
+     * are single-stream items, so they are excluded even though [isSeriesType] matches `tv`.
      */
     fun usesEpisodes(type: String?): Boolean = isSeriesType(type) && !isLiveType(type)
 
@@ -373,6 +399,24 @@ object StremioMapping {
             !video.id.isNullOrBlank() &&
                 ((video.season ?: 0) > 0 || (video.episode ?: 0) > 0)
         }
+    }
+
+    /** Shape of a Cloudstream response for a Stremio item. */
+    enum class MediaShape { Movie, Series, Live }
+
+    /**
+     * Single classification used by both search previews and detail loads. Episodes win first so
+     * an explicit series is never downgraded by a stray live hint; otherwise live types and
+     * `meta.behaviorHints.isLive` produce a live item, and everything else stays movie-like.
+     */
+    fun mediaShape(
+        type: String?,
+        videos: List<StremioVideo>? = null,
+        isLiveHint: Boolean = false,
+    ): MediaShape = when {
+        usesEpisodes(type, videos) -> MediaShape.Series
+        isLiveType(type) || isLiveHint -> MediaShape.Live
+        else -> MediaShape.Movie
     }
 
     /**
@@ -497,6 +541,7 @@ object StremioMapping {
         "anime.movie" -> "Anime Movies"
         "anime.series" -> "Anime Series"
         "channel" -> "Channels"
+        "tv", "live" -> "Live"
         else -> type.orEmpty().replaceFirstChar { it.uppercase() }.ifBlank { "Other" }
     }
 
