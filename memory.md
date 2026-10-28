@@ -276,3 +276,16 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 - 86 JVM tests pass via `streamiolink-tests` (3 new/updated test methods). Bumped 38 → 39. CI run
   `40628014593` passed and published version 39; `builds/plugins.json` lists
   `Movie`/`TvSeries`/`Live`/`Torrent`.
+
+## 2026-10-28 — Encode Stremio ids as path segments — version 40
+- Some addons (India FM Radio HD) use full URLs as meta/stream ids. Building
+  `/meta/live/https://…||Station||…json` raw let Vercel normalize the embedded `//` to `/` via a
+  308, producing `/https:/…` and a 404, so `load()` returned null and CloudStream showed
+  "Error loading, try again later."
+- `StremioMapping.encodePathSegment` now percent-encodes one path segment but preserves RFC 3986
+  `pchar` (including `:`). Ordinary ids (`tt…:s:e`, `cnc:…=`) stay byte-identical; only spaces,
+  `/`, `|`, `?`, `#`, `%`, brackets and non-ASCII change. Meta, stream, subtitles and catalog URLs
+  use it. Raw-URL retries were deliberately not added.
+- Verified India FM's encoded meta and stream URLs return 200 (raw returns 404 after the Vercel
+  redirect); CNC and Stremio Radios encoded forms also return 200.
+- 88 JVM tests pass via `streamiolink-tests` (2 new test methods). Bumped 39 → 40.

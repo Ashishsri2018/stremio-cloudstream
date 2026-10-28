@@ -543,6 +543,49 @@ class StremioManifestTest {
     }
 
     @Test
+    fun encodesPathSegmentsWithoutChangingOrdinaryIds() {
+        assertEquals("tt123:1:2", StremioMapping.encodePathSegment("tt123:1:2"))
+        assertEquals("cnc:ABC_123-xyz=", StremioMapping.encodePathSegment("cnc:ABC_123-xyz="))
+        assertEquals(
+            "radios:99497996%7CQU5URU5ORSUyMEJBWUVSTg==",
+            StremioMapping.encodePathSegment("radios:99497996|QU5URU5ORSUyMEJBWUVSTg=="),
+        )
+        assertEquals("big%20buck%2Fmore%3Fx%23y", StremioMapping.encodePathSegment("big buck/more?x#y"))
+        assertEquals("caf%C3%A9", StremioMapping.encodePathSegment("café"))
+    }
+
+    @Test
+    fun buildsUrlsForUrlShapedIds() {
+        val base = "https://addon.example"
+        val id = "https://stream.example/station||Telugu Hits||Telugu||https://img.example/a b.webp"
+        val encoded = "https:%2F%2Fstream.example%2Fstation%7C%7CTelugu%20Hits%7C%7CTelugu%7C%7C" +
+            "https:%2F%2Fimg.example%2Fa%20b.webp"
+        assertEquals("$base/meta/live/$encoded.json", StremioMapping.buildMetaUrl(base, "live", id))
+        assertEquals("$base/stream/live/$encoded.json", StremioMapping.buildStreamUrl(base, "live", id))
+        assertEquals(
+            "$base/subtitles/live/$encoded.json",
+            StremioMapping.buildSubtitlesUrl(base, "live", id, null, null),
+        )
+        assertEquals(
+            "$base/subtitles/live/$encoded/videoHash=abc&videoSize=1234.json",
+            StremioMapping.buildSubtitlesUrl(base, "live", id, "abc", 1234L),
+        )
+        assertEquals(
+            "$base/catalog/live/my%20catalog.json",
+            StremioMapping.buildCatalogUrl(base, "live", "my catalog"),
+        )
+        assertEquals(
+            "$base/catalog/live/my%20catalog/search=big%20buck.json",
+            StremioMapping.buildCatalogUrl(
+                base,
+                "live",
+                "my catalog",
+                "search=${StremioMapping.encodeQueryValue("big buck")}",
+            ),
+        )
+    }
+
+    @Test
     fun buildsSubtitlesUrlsWithAndWithoutHints() {
         val base = "https://addon.example"
         assertEquals(

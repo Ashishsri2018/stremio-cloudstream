@@ -547,8 +547,37 @@ object StremioMapping {
 
     // ---------------------------------------------------------------- url building
 
+    private const val PATH_SEGMENT_SAFE =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:@!$&'()*+,;="
+    private const val HEX_DIGITS = "0123456789ABCDEF"
+
     fun encodeQueryValue(value: String): String =
         URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+    /**
+     * Percent-encodes one URL path segment while preserving RFC 3986 `pchar` characters
+     * (including `:`) plus `~`. Ordinary Stremio ids (`tt…:s:e`, `cnc:<base64>=`) therefore
+     * keep the same encoding as before. Only characters that actually break path routing are
+     * escaped: spaces, `/`, `|`, `?`, `#`, `%`, brackets, non-ASCII and control bytes. This
+     * matters for addons that use full URLs as item ids: proxies such as Vercel collapse `//`
+     * in a raw path to `/` and then 404 the id.
+     */
+    fun encodePathSegment(value: String): String {
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        val out = StringBuilder(bytes.size)
+        for (byte in bytes) {
+            val code = byte.toInt() and 0xFF
+            val char = code.toChar()
+            if (char in PATH_SEGMENT_SAFE) {
+                out.append(char)
+            } else {
+                out.append('%')
+                    .append(HEX_DIGITS[code ushr 4])
+                    .append(HEX_DIGITS[code and 0x0F])
+            }
+        }
+        return out.toString()
+    }
 
     fun normalizeAddonUrl(raw: String?): String? {
         var url = raw?.trim().orEmpty()
@@ -585,21 +614,21 @@ object StremioMapping {
 
     fun buildCatalogUrl(base: String, type: String, catalogId: String, extra: String? = null): String {
         val extraSegment = extra?.takeIf { it.isNotBlank() }?.let { "/$it" }.orEmpty()
-        return "$base/catalog/$type/$catalogId$extraSegment.json"
+        return "$base/catalog/$type/${encodePathSegment(catalogId)}$extraSegment.json"
     }
 
     fun buildMetaUrl(base: String, type: String, id: String): String =
-        "$base/meta/$type/$id.json"
+        "$base/meta/$type/${encodePathSegment(id)}.json"
 
     fun buildStreamUrl(base: String, type: String, id: String): String =
-        "$base/stream/$type/$id.json"
+        "$base/stream/$type/${encodePathSegment(id)}.json"
 
     fun buildSubtitlesUrl(base: String, type: String, id: String, videoHash: String?, videoSize: Long?): String {
         val extra = mutableListOf<String>()
         if (!videoHash.isNullOrBlank()) extra.add("videoHash=$videoHash")
         if (videoSize != null && videoSize > 0) extra.add("videoSize=$videoSize")
         val extraSegment = if (extra.isEmpty()) "" else "/" + extra.joinToString("&")
-        return "$base/subtitles/$type/$id$extraSegment.json"
+        return "$base/subtitles/$type/${encodePathSegment(id)}$extraSegment.json"
     }
 
     /**

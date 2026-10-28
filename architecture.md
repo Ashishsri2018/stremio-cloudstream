@@ -81,7 +81,11 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    carries its addon `base` for this reason: Plavio live `tv` ids (`plaviohdtv-…`) only resolve on
    Plavio, while Cinemeta/TMDB only know `tt…` ids. Stub metas (blank name, or a series meta with no
    videos / a name equal to the id) are skipped so the next addon can answer: Plavio's `/meta` is a
-   stub for VOD ids but complete for live channels. The response shape follows `meta.type` (falling
+   stub for VOD ids but complete for live channels. Resource URLs encode every id/catalog id as a
+   single path segment (`StremioMapping.encodePathSegment`) while preserving RFC 3986 `pchar`
+   such as `:`: ordinary ids like `tt…:s:e` and `cnc:…=` stay byte-identical, while URL-shaped ids
+   (`https://…||Station`) are escaped so Vercel/Cloudflare cannot collapse `//` into `/https:/…`.
+   The response shape follows `meta.type` (falling
    back to the payload type) plus `meta.behaviorHints.isLive` through
    `StremioMapping.mediaShape`, so an `anime` catalog item that resolves to a series keeps its
    episode list and its episode links use the series type. `other` metas are common in VOD bridge addons

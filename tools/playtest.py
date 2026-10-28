@@ -101,13 +101,19 @@ def encode_query_value(value: str) -> str:
     return urllib.parse.quote(value, safe="")
 
 
+def encode_path_segment(value: str) -> str:
+    # Preserve RFC 3986 pchar (including ':') so ordinary ids stay unchanged; encode spaces,
+    # slashes, pipes and other characters that break path routing or proxy normalization.
+    return urllib.parse.quote(value, safe=":@!$&'()*+,;=")
+
+
 def build_catalog_url(base: str, ctype: str, cid: str, extra: str | None = None) -> str:
     extra_segment = f"/{extra}" if extra and extra.strip() else ""
-    return f"{base.rstrip('/')}/catalog/{ctype}/{cid}{extra_segment}.json"
+    return f"{base.rstrip('/')}/catalog/{ctype}/{encode_path_segment(cid)}{extra_segment}.json"
 
 
 def build_stream_url(base: str, ctype: str, sid: str) -> str:
-    return f"{base.rstrip('/')}/stream/{ctype}/{sid}.json"
+    return f"{base.rstrip('/')}/stream/{ctype}/{encode_path_segment(sid)}.json"
 
 
 def guess_stream_kind(url: str, filename: str | None = None) -> str:
