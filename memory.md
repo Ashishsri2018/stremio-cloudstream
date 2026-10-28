@@ -288,4 +288,6 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   use it. Raw-URL retries were deliberately not added.
 - Verified India FM's encoded meta and stream URLs return 200 (raw returns 404 after the Vercel
   redirect); CNC and Stremio Radios encoded forms also return 200.
-- 88 JVM tests pass via `streamiolink-tests` (2 new test methods). Bumped 39 → 40.
+- 88 JVM tests pass via `streamiolink-tests` (2 new test methods). Bumped 39 → 40. CI run
+  `40634215682` passed and published version 40; `builds/plugins.json` still lists
+  `Movie`/`TvSeries`/`Live`/`Torrent`.
