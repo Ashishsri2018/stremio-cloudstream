@@ -12,7 +12,7 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 - Published artifacts: `builds` branch -> `StreamioLink.cs3` + `plugins.json`.
 - **v41 — DRM passthrough**: the addon's `drm` object maps to CloudStream `DrmExtractorLink`
   for DASH (ClearKey uses the first pair, Widevine/PlayReady use `licenseUrl`); HLS/progressive
-  DRM streams stay on the normal link path.
+  DRM streams stay on the normal link path. CI green: run 44849665456 (2026-11-21).
 
 ## Build/CI Lessons (important)
 - JitPack coordinate `com.github.recloudstream:gradle:master-SNAPSHOT` only serves an
@@ -21,6 +21,9 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   its cache (~90 days). Workflow now warms the correct coordinates and retries Gradle on transient 404s.
 - Module must compile with JVM target 11: the cloudstream3 stub's inline `getKey`/`setKey`
   (DataStore) are JVM-11 bytecode and fail to inline into JVM 1.8 targets.
+- `kotlin.uuid.Uuid` and the `*_DRM_UUID` constants need **both** `@OptIn(Prerelease::class)`
+  and `@OptIn(ExperimentalUuidApi::class)`; missing the UUID opt-in fails `compileDebugKotlin`
+  even though the `Prerelease` annotation is present.
 - Plugin list display name = module directory name (no `name` field in CloudstreamExtension),
   so the module dir was renamed `StremioPlugin` -> `StreamioLink`.
 - raw.githubusercontent.com serves stale CDN copies for minutes after a push; verify with the API.
