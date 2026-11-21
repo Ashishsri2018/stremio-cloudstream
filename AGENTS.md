@@ -68,6 +68,7 @@ Split phases at each `PlayViewGen: loadLinks` line (Play is the first, Reload mi
 - `settings.gradle.kts` auto-includes every subdir with a `build.gradle.kts` (except `disabled`); new modules register without editing it.
 - `StremioMapping` must stay free of Android/CloudStream imports (it is the unit-tested layer). Android/CloudStream code belongs in `StremioApi`/`StremioProvider`/`StremioSettingsDialog`.
 - Every feature must be **battery-friendly**: keep CPU, network, and wake-up cost on the client device to an absolute minimum. Avoid background loops/polling, needless re-fetches or re-parses, and redundant allocations; reuse what is already fetched, batch requests, and let work happen on demand.
+- Add comments where necessary.
 
 ## Quirks
 
@@ -81,6 +82,8 @@ Split phases at each `PlayViewGen: loadLinks` line (Play is the first, Reload mi
 
 ## Docs
 
-- `architecture.md` — system layout + data flow; `memory.md` — running log of release/CI lessons (append new dated entries); `known-issues.md` — current unresolved issues/limitations (put new ones here, not in `memory.md`). Keep the architecture/memory docs in sync with behavior changes, and move fixed items out of `known-issues.md`.
+- `architecture.md` — system layout + data flow.
+- `memory.md` — acts as a running log. Update it to note what was changed/achieved in the session (append new dated entries). Keep architecture/memory docs in sync with behavior changes.
+- `known-issues.md` — all caveats should be stored in `known-issues.md` (put new unresolved issues/limitations here, not in `memory.md`, and move fixed items out).
 - `TODO.md` is an idea backlog with explicitly `DROPPED` items, not a roadmap; `bugF.md`/`bugG.md` are gitignored scratch notes, not authoritative.
-- Commit style is terse descriptive (`git log`); CI builds on pushes to `main`/`master`.
+- Commit style is terse descriptive (`git log`); CI builds on pushes to `main`/`master`. Docs-only changes should be committed with `[skip ci]`.
