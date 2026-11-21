@@ -50,6 +50,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.uuid.ExperimentalUuidApi
 
 /**
  * Cloudstream provider that plays content through Stremio addons.
@@ -60,7 +61,7 @@ import java.util.concurrent.atomic.AtomicReference
  * - Every configured source addon (plus catalog addons whose per-entry "use as source" is on)
  *   is queried for streams.
  */
-@OptIn(Prerelease::class)
+@OptIn(Prerelease::class, ExperimentalUuidApi::class)
 class StremioProvider : MainAPI() {
     override var mainUrl = StremioSettings.DEFAULT_CATALOG_URL
     override var name = "StreamioLink"
