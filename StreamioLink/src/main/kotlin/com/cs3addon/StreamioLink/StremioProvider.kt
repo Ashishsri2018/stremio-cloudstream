@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageData
 import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.Prerelease
 import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.ShowStatus
@@ -26,10 +27,14 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.newTvSeriesSearchResponse
+import com.lagradost.cloudstream3.utils.CLEARKEY_DRM_UUID
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.PLAYREADY_DRM_UUID
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.WIDEVINE_DRM_UUID
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.newDrmExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -55,6 +60,7 @@ import java.util.concurrent.atomic.AtomicReference
  * - Every configured source addon (plus catalog addons whose per-entry "use as source" is on)
  *   is queried for streams.
  */
+@OptIn(Prerelease::class)
 class StremioProvider : MainAPI() {
     override var mainUrl = StremioSettings.DEFAULT_CATALOG_URL
     override var name = "StreamioLink"
@@ -602,6 +608,62 @@ class StremioProvider : MainAPI() {
                                 }
                                 continue
                             }
+                            val drmKind = StremioMapping.drmKind(candidate.stream)
+                            val drmUuid = when (drmKind) {
+                                StremioMapping.DrmKind.CLEARKEY -> CLEARKEY_DRM_UUID
+                                StremioMapping.DrmKind.WIDEVINE -> WIDEVINE_DRM_UUID
+                                StremioMapping.DrmKind.PLAYREADY -> PLAYREADY_DRM_UUID
+                                null -> null
+                            }
+                            val clearKey = if (drmKind == StremioMapping.DrmKind.CLEARKEY) {
+                                StremioMapping.clearKeyPairs(candidate.stream).firstOrNull()
+                            } else {
+                                null
+                            }
+                            val licenseUrl = if (drmKind == StremioMapping.DrmKind.WIDEVINE ||
+                                drmKind == StremioMapping.DrmKind.PLAYREADY
+                            ) {
+                                StremioMapping.drmLicenseUrl(candidate.stream)
+                            } else {
+                                null
+                            }
+                            // CloudStream's player builds a DashMediaSource for DRM, so HLS and
+                            // progressive files stay on the normal link path.
+                            if (drmUuid != null &&
+                                (clearKey != null || licenseUrl != null) &&
+                                StremioMapping.isDashDrmUrl(
+                                    candidate.url,
+                                    candidate.stream.behaviorHints?.filename,
+                                )
+                            ) {
+                                if (emitted.incrementAndGet() > MAX_LINKS) break
+                                callback.invoke(
+                                    newDrmExtractorLink(
+                                        candidate.addonName,
+                                        candidate.label,
+                                        candidate.url,
+                                        ExtractorLinkType.DASH,
+                                        drmUuid,
+                                    ) {
+                                        this.quality = candidate.quality
+                                        this.referer = candidate.referer
+                                        this.headers = candidate.headers
+                                        candidate.stream.drm?.keyRequestParameters?.let {
+                                            if (it.isNotEmpty()) this.keyRequestParameters = HashMap(it)
+                                        }
+                                        if (drmKind == StremioMapping.DrmKind.CLEARKEY && clearKey != null) {
+                                            this.kid = clearKey.kid
+                                            this.key = clearKey.key
+                                            this.kty = candidate.stream.drm?.kty ?: "oct"
+                                        } else if (licenseUrl != null) {
+                                            this.licenseUrl = licenseUrl
+                                        }
+                                    }
+                                )
+                                found.set(true)
+                                continue
+                            }
+
                             if (emitted.incrementAndGet() > MAX_LINKS) break
                             callback.invoke(
                                 newExtractorLink(

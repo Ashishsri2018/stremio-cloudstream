@@ -34,6 +34,12 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 
 ## Playback / link policy
 
+- **DRM playback is DASH-only and single-key (2026-11-21)**: `DrmExtractorLink` carries one
+  ClearKey KID/key and CloudStream's player always builds a `DashMediaSource`. Multi-key ClearKey
+  streams therefore use the first valid pair, and HLS/progressive DRM streams stay on the normal
+  link path. Widevine/PlayReady require a `licenseUrl`. The `drm` field is not part of the official
+  Stremio protocol, so stock Stremio clients ignore it; only DRM-capable bridges such as this
+  plugin consume it.
 - **P2P needs a torrent-capable host**: `infoHash`-only streams become `MAGNET` links and require a
   CloudStream build with the torrent server plus the per-session consent prompt.
 - **No P2P opt-out setting**: the plugin always emits magnets (left out by request); CloudStream's

@@ -3,6 +3,8 @@ package com.cs3addon.StreamioLink
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.net.URLEncoder
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Pure Stremio protocol logic: parsing, URL building and mapping decisions.
@@ -678,6 +680,99 @@ object StremioMapping {
             else -> StreamKind.VIDEO
         }
     }
+
+    /**
+     * True when DRM can be mapped to CloudStream's DashMediaSource. Explicit DASH URLs and
+     * extensionless manifests qualify; HLS and known progressive video files do not.
+     */
+    fun isDashDrmUrl(url: String, filename: String? = null): Boolean =
+        when (guessStreamKind(url, filename)) {
+            StreamKind.DASH -> true
+            StreamKind.HLS -> false
+            StreamKind.VIDEO -> {
+                val lower = url.lowercase()
+                val path = lower.substringBefore('?').substringBefore('#')
+                val name = filename?.lowercase().orEmpty()
+                !videoFileRegex.containsMatchIn(path + " " + name)
+            }
+        }
+
+    enum class DrmKind { CLEARKEY, WIDEVINE, PLAYREADY }
+
+    data class DrmKey(val kid: String, val key: String)
+
+    /**
+     * Classifies a stream's DRM object. Accepts the short names and the MIME-style aliases
+     * used by different providers; a missing `type` is inferred from `clearKeys`.
+     */
+    fun drmKind(stream: StremioStream): DrmKind? {
+        val drm = stream.drm ?: return null
+        val type = drm.type?.trim()?.lowercase()
+        return when {
+            type == "clearkey" || type == "org.w3.clearkey" -> DrmKind.CLEARKEY
+            type == "widevine" || type == "com.widevine.alpha" -> DrmKind.WIDEVINE
+            type == "playready" || type == "com.microsoft.playready" -> DrmKind.PLAYREADY
+            type == null && !drm.clearKeys.isNullOrEmpty() -> DrmKind.CLEARKEY
+            else -> null
+        }
+    }
+
+    /**
+     * Returns ClearKey pairs in declaration order. CloudStream's DrmExtractorLink supports a
+     * single pair, so the caller uses the first one; all valid pairs are kept here so future
+     * clients can consume the full list.
+     */
+    fun clearKeyPairs(stream: StremioStream): List<DrmKey> {
+        val drm = stream.drm ?: return emptyList()
+        val fromMap = drm.clearKeys.orEmpty().mapNotNull { (rawKid, rawKey) ->
+            val kid = normalizeDrmKey(rawKid) ?: return@mapNotNull null
+            val key = normalizeDrmKey(rawKey) ?: return@mapNotNull null
+            DrmKey(kid, key)
+        }
+        if (fromMap.isNotEmpty()) return fromMap
+        val kid = drm.keyId?.let(::normalizeDrmKey) ?: return emptyList()
+        val key = drm.key?.let(::normalizeDrmKey) ?: return emptyList()
+        return listOf(DrmKey(kid, key))
+    }
+
+    /** Returns a usable http(s) license endpoint for Widevine/PlayReady DRM. */
+    fun drmLicenseUrl(stream: StremioStream): String? {
+        val url = stream.drm?.licenseUrl?.trim().orEmpty()
+        return url.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+    }
+
+    private val hex32Regex = Regex("^[0-9a-fA-F]{32}$")
+
+    /**
+     * ExoPlayer's ClearKey JSON expects unpadded base64url. Providers usually send 32-char
+     * hex KID/key values, so convert those; already-base64 values are normalized in place.
+     */
+    private fun normalizeDrmKey(raw: String): String? {
+        val value = raw.trim()
+        if (value.isEmpty()) return null
+        return if (hex32Regex.matches(value)) {
+            base64Url(hexToBytes(value))
+        } else {
+            normalizeBase64Url(value)
+        }
+    }
+
+    private fun hexToBytes(hex: String): ByteArray {
+        val out = ByteArray(hex.length / 2)
+        for (i in out.indices) {
+            val hi = hex[i * 2].digitToInt(16)
+            val lo = hex[i * 2 + 1].digitToInt(16)
+            out[i] = ((hi shl 4) or lo).toByte()
+        }
+        return out
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun base64Url(bytes: ByteArray): String =
+        Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(bytes)
+
+    private fun normalizeBase64Url(value: String): String =
+        value.replace('+', '-').replace('/', '_').trimEnd('=')
 
     /**
      * Parses the blank-line-separated tracker list served by ngosang/trackerslist.

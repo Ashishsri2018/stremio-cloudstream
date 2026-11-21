@@ -159,6 +159,24 @@ data class StremioStreamsResponse(
     @JsonProperty("streams") val streams: List<StremioStream>? = null,
 )
 
+/**
+ * DRM metadata attached to a stream. This is not part of the official Stremio protocol;
+ * DRM-capable clients (such as this plugin) read it directly. Unknown fields are ignored,
+ * so the gateway can forward every provider field without breaking older clients.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StremioDrm(
+    @JsonProperty("type") val type: String? = null,
+    /** ClearKey: KID -> key, both usually 32-character hex strings. */
+    @JsonProperty("clearKeys") val clearKeys: Map<String, String>? = null,
+    /** Widevine/PlayReady license endpoint. */
+    @JsonProperty("licenseUrl") val licenseUrl: String? = null,
+    @JsonProperty("keyId") val keyId: String? = null,
+    @JsonProperty("key") val key: String? = null,
+    @JsonProperty("kty") val kty: String? = null,
+    @JsonProperty("keyRequestParameters") val keyRequestParameters: Map<String, String>? = null,
+)
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class StremioStream(
     @JsonProperty("url") val url: String? = null,
@@ -174,6 +192,8 @@ data class StremioStream(
     @JsonProperty("sources") val sources: List<String>? = null,
     /** Subtitles embedded directly on the stream object (a valid Stremio protocol field). */
     @JsonProperty("subtitles") val subtitles: List<StremioSubtitle>? = null,
+    /** Provider DRM metadata, preserved by the addon gateway for DRM-capable clients. */
+    @JsonProperty("drm") val drm: StremioDrm? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

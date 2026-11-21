@@ -997,4 +997,136 @@ class StremioStreamTest {
         assertEquals("https://subs.example/en.srt", embedded[0].url)
         assertEquals("https://subs.example/fr.srt", embedded[1].url)
     }
+
+    @Test
+    fun parsesDrmMetadataAndPreservesKnownFields() {
+        val streams = StremioMapping.parseStreams(
+            """
+            {
+              "streams": [
+                {
+                  "url": "https://cdn.example/drm.mpd",
+                  "drm": {
+                    "type": "org.w3.clearkey",
+                    "clearKeys": {
+                      "00112233445566778899aabbccddeeff": "ffeeddccbbaa99887766554433221100"
+                    },
+                    "licenseUrl": "https://license.example/clearkey",
+                    "headers": { "X-Test": "1" },
+                    "custom": true
+                  }
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+        val drm = streams.single().drm
+        assertEquals("org.w3.clearkey", drm?.type)
+        assertEquals("https://license.example/clearkey", drm?.licenseUrl)
+        assertEquals(1, drm?.clearKeys?.size)
+    }
+
+    @Test
+    fun classifiesDrmAliasesAndInfersClearKey() {
+        assertEquals(
+            StremioMapping.DrmKind.CLEARKEY,
+            StremioMapping.drmKind(StremioStream(drm = StremioDrm(type = "org.w3.clearkey"))),
+        )
+        assertEquals(
+            StremioMapping.DrmKind.WIDEVINE,
+            StremioMapping.drmKind(StremioStream(drm = StremioDrm(type = "com.widevine.alpha"))),
+        )
+        assertEquals(
+            StremioMapping.DrmKind.PLAYREADY,
+            StremioMapping.drmKind(StremioStream(drm = StremioDrm(type = "com.microsoft.playready"))),
+        )
+        assertEquals(
+            StremioMapping.DrmKind.CLEARKEY,
+            StremioMapping.drmKind(StremioStream(drm = StremioDrm(clearKeys = mapOf("k" to "v")))),
+        )
+        assertNull(StremioMapping.drmKind(StremioStream()))
+        assertNull(StremioMapping.drmKind(StremioStream(drm = StremioDrm(type = "unknown"))))
+    }
+
+    @Test
+    fun convertsClearKeyHexToUnpaddedBase64Url() {
+        val pairs = StremioMapping.clearKeyPairs(
+            StremioStream(
+                drm = StremioDrm(
+                    clearKeys = mapOf(
+                        "00112233445566778899aabbccddeeff" to "ffeeddccbbaa99887766554433221100"
+                    )
+                )
+            )
+        )
+        assertEquals(1, pairs.size)
+        assertEquals("ABEiM0RVZneImaq7zN3u_w", pairs[0].kid)
+        assertEquals("_-7dzLuqmYh3ZlVEMyIRAA", pairs[0].key)
+
+        val upper = StremioMapping.clearKeyPairs(
+            StremioStream(
+                drm = StremioDrm(
+                    clearKeys = mapOf(
+                        "00112233445566778899AABBCCDDEEFF" to "FFEEDDCCBBAA99887766554433221100"
+                    )
+                )
+            )
+        )
+        assertEquals("ABEiM0RVZneImaq7zN3u_w", upper[0].kid)
+    }
+
+    @Test
+    fun normalizesAlreadyBase64KeysAndFallsBackToSinglePair() {
+        val alreadyBase64 = StremioMapping.clearKeyPairs(
+            StremioStream(
+                drm = StremioDrm(
+                    clearKeys = mapOf("ABEiM0RVZneImaq7zN3u/w==" to "_-7dzLuqmYh3ZlVEMyIRAA")
+                )
+            )
+        )
+        assertEquals("ABEiM0RVZneImaq7zN3u_w", alreadyBase64[0].kid)
+
+        val fallback = StremioMapping.clearKeyPairs(
+            StremioStream(
+                drm = StremioDrm(
+                    keyId = "00112233445566778899aabbccddeeff",
+                    key = "ffeeddccbbaa99887766554433221100",
+                )
+            )
+        )
+        assertEquals("ABEiM0RVZneImaq7zN3u_w", fallback[0].kid)
+        assertEquals("_-7dzLuqmYh3ZlVEMyIRAA", fallback[0].key)
+
+        assertTrue(StremioMapping.clearKeyPairs(StremioStream()).isEmpty())
+        assertTrue(
+            StremioMapping.clearKeyPairs(
+                StremioStream(drm = StremioDrm(clearKeys = mapOf(" " to " ")))
+            ).isEmpty()
+        )
+    }
+
+    @Test
+    fun validatesLicenseUrlsAndDashDrmCandidates() {
+        assertEquals(
+            "https://license.example/wv",
+            StremioMapping.drmLicenseUrl(
+                StremioStream(
+                    drm = StremioDrm(type = "widevine", licenseUrl = "https://license.example/wv")
+                )
+            ),
+        )
+        assertNull(
+            StremioMapping.drmLicenseUrl(
+                StremioStream(
+                    drm = StremioDrm(type = "widevine", licenseUrl = "ftp://license.example/wv")
+                )
+            ),
+        )
+
+        assertTrue(StremioMapping.isDashDrmUrl("https://cdn.example/drm.mpd"))
+        // Extensionless manifests are DASH in practice (liveTgTv emits these).
+        assertTrue(StremioMapping.isDashDrmUrl("https://cdn.example/manifest?token=1"))
+        assertTrue(!StremioMapping.isDashDrmUrl("https://cdn.example/drm.m3u8"))
+        assertTrue(!StremioMapping.isDashDrmUrl("https://cdn.example/drm.mp4"))
+    }
 }

@@ -139,7 +139,12 @@ A CloudStream 3 (Android) plugin that acts as a client for the Stremio addon eco
    `/hls/` path DASH and a direct file in a `playlist` folder VIDEO. Audio-only radio URLs
    (extension-less Shoutcast/Icecast, `.mp3`/`.aac`) map to `VIDEO` and rely on ExoPlayer's
    progressive extractors (MP3/ADTS); CloudStream has no audio link type, so HLS radio uses
-   `M3U8` and ICY/Shoutcast edge cases are tracked in `known-issues.md`. `ytId` streams are YouTube
+   `M3U8` and ICY/Shoutcast edge cases are tracked in `known-issues.md`. Streams carrying a
+   `drm` object become CloudStream `DrmExtractorLink`s when the URL is DASH (including
+   extensionless manifests): ClearKey uses the first valid KID/key pair (CloudStream supports
+   one) and converts 32-character hex values to unpadded base64url, while Widevine/PlayReady
+   use `licenseUrl`. HLS and progressive files stay on the normal `ExtractorLink` path because
+   CloudStream's DRM player always builds a `DashMediaSource`. `ytId` streams are YouTube
    **page** URLs, not media files: the provider hands them to CloudStream's `loadExtractor`
    (YouTube extractors) instead of emitting them as `VIDEO`, and drops the link if extraction
    fails. Addon "nothing found"

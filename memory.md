@@ -10,6 +10,9 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 - Install URL: https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/repo.json
   (branch-less raw URL 404s; always include /main/)
 - Published artifacts: `builds` branch -> `StreamioLink.cs3` + `plugins.json`.
+- **v41 — DRM passthrough**: the addon's `drm` object maps to CloudStream `DrmExtractorLink`
+  for DASH (ClearKey uses the first pair, Widevine/PlayReady use `licenseUrl`); HLS/progressive
+  DRM streams stay on the normal link path.
 
 ## Build/CI Lessons (important)
 - JitPack coordinate `com.github.recloudstream:gradle:master-SNAPSHOT` only serves an
