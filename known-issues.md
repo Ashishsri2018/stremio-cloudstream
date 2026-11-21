@@ -40,6 +40,9 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
   link path. Widevine/PlayReady require a `licenseUrl`. The `drm` field is not part of the official
   Stremio protocol, so stock Stremio clients ignore it; only DRM-capable bridges such as this
   plugin consume it.
+- **`externalUrl` streams are skipped (2026-11-21)**: CloudStream links are built only from
+  playable `url`/`ytId`/magnet streams. `externalUrl` entries (web pages/archives) are never
+  offered, so any `drm` metadata the addon forwards on them is not mapped to a player link.
 - **P2P needs a torrent-capable host**: `infoHash`-only streams become `MAGNET` links and require a
   CloudStream build with the torrent server plus the per-session consent prompt.
 - **No P2P opt-out setting**: the plugin always emits magnets (left out by request); CloudStream's
