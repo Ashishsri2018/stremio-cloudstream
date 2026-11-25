@@ -49,7 +49,8 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
     missing instead of publishing an empty repo. The Material dependency was kept: although not
     referenced directly, it supplies the AndroidX/coroutines classpath that the
     `cloudstream3:pre-release` stub does not bring transitively (removing it broke compilation).
-  - 102 JVM tests pass via `streamiolink-tests`. Bumped 41 → 42.
+  - 102 JVM tests pass via `streamiolink-tests`. Bumped 41 → 42. CI run `45583716746` passed and
+    published version 42 (`builds/plugins.json`).
 
 ## Build/CI Lessons (important)
 - JitPack coordinate `com.github.recloudstream:gradle:master-SNAPSHOT` only serves an
