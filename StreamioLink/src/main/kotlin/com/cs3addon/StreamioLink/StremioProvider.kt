@@ -141,8 +141,13 @@ class StremioProvider : MainAPI() {
 
     private suspend fun allCatalogsPage(page: Int): HomePageResponse? {
         val catalogBases = StremioSettings.catalogUrls()
-        val manifests = catalogBases.mapNotNull { base ->
-            StremioApi.getManifest(base)?.let { base to it }
+        // Manifests are cached after the first load, but a cold cache with one slow catalog
+        // addon used to serialize every later addon behind its 20 s timeout. Fetch concurrently
+        // (awaitAll preserves settings order) so one stuck addon only costs its own timeout.
+        val manifests = coroutineScope {
+            catalogBases.map { base ->
+                async { StremioApi.getManifest(base)?.let { base to it } }
+            }.awaitAll().filterNotNull()
         }
         if (manifests.isEmpty()) return newHomePageResponse(emptyList(), false)
 
@@ -189,7 +194,9 @@ class StremioProvider : MainAPI() {
                 }
             }.awaitAll().filterNotNull()
         }
-        val hasNext = sources.any { StremioMapping.catalogSupportsSkip(it.catalog) }
+        // An empty home (all catalogs failed) must not advertise another page.
+        val hasNext = rows.isNotEmpty() &&
+            sources.any { StremioMapping.catalogSupportsSkip(it.catalog) }
         return newHomePageResponse(rows, hasNext)
     }
 
@@ -241,6 +248,9 @@ class StremioProvider : MainAPI() {
     ): HomePageList? {
         val type = source.catalog.type ?: return null
         val id = source.catalog.id ?: return null
+        // A catalog that cannot paginate returns its first page for every `skip`; asking for
+        // page 2+ would duplicate rows (or 404) instead of loading more.
+        if (page > 1 && !StremioMapping.catalogSupportsSkip(source.catalog)) return null
         val key = StremioMapping.encodeCatalogRef(type, id, source.base)
         val offset = if (page > 1) (catalogOffsets[key] ?: ((page - 1) * DEFAULT_PAGE_SIZE)) else 0
         val extra = StremioMapping.catalogExtra(StremioMapping.catalogPresetExtra(source.catalog), offset)
@@ -263,7 +273,8 @@ class StremioProvider : MainAPI() {
         fallbackType: String,
         base: String,
     ): SearchResponse? {
-        val id = meta.id ?: return null
+        // decodePayload rejects blank ids, so a blank card would be unopenable.
+        val id = meta.id?.takeIf { it.isNotBlank() } ?: return null
         val metaType = meta.type?.takeIf { it.isNotBlank() } ?: fallbackType
         // Keep the live catalog type in the payload when the meta is live-ish but declares a
         // generic `movie`; otherwise load() would lose the live shape on the next round-trip.
@@ -382,10 +393,14 @@ class StremioProvider : MainAPI() {
             isLiveHint = meta.behaviorHints?.isLive == true ||
                 StremioMapping.isLiveType(payload.type),
         )
+        // Non-standard types (`anime`, `other`, ...) must be normalised before they travel to
+        // loadLinks: standard stream addons advertise only `movie`/`series`.
+        val linkType = StremioMapping.linkTypeFor(type, shape)
 
         return when (shape) {
             StremioMapping.MediaShape.Series -> {
-                val episodes = meta.videos.orEmpty().mapNotNull { toEpisode(type, payload.base, it) }
+                val episodes = meta.videos.orEmpty()
+                    .mapIndexedNotNull { index, video -> toEpisode(linkType, payload.base, video, index) }
                 newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                     this.posterUrl = meta.poster
                     this.backgroundPosterUrl = meta.background
@@ -420,7 +435,13 @@ class StremioProvider : MainAPI() {
                 this.trailers = trailersFrom(meta)
             }
 
-            StremioMapping.MediaShape.Movie -> newMovieLoadResponse(title, url, TvType.Movie, url) {
+            StremioMapping.MediaShape.Movie -> newMovieLoadResponse(
+                title,
+                url,
+                TvType.Movie,
+                // Keep `url` as the response identity but hand loadLinks the canonical type.
+                StremioMapping.encodePayload(payload.id, linkType, payload.base),
+            ) {
                 this.posterUrl = meta.poster
                 this.backgroundPosterUrl = meta.background
                 this.logoUrl = meta.logo
@@ -482,10 +503,23 @@ class StremioProvider : MainAPI() {
         candidates.add(StremioSettings.catalogUrl())
         StremioMapping.normalizeAddonUrl(StremioSettings.metaUrl())?.let { candidates.add(it) }
 
+        // Retained when a later addon supplies no better meta. Upcoming series often have a
+        // valid title/poster but `videos: []`; discarding them made the title unopenable.
+        var titledFallback: StremioMetaDetails? = null
         for (base in candidates) {
             // Live catalogs are inconsistent about the type advertised for their meta
             // resource; resolve it through the cached manifest before building the URL.
             val manifest = StremioApi.getManifest(base)
+            if (manifest != null) {
+                // Do not fire a doomed /meta request at an addon that does not serve it or
+                // does not own this id's prefix.
+                if (!StremioMapping.manifestSupportsResource(manifest, "meta")) continue
+                if (!StremioMapping.idMatchesPrefixes(
+                        payload.id,
+                        StremioMapping.resourceIdPrefixesFor(manifest, "meta")
+                    )
+                ) continue
+            }
             val metaType = manifest?.let {
                 StremioMapping.resolveResourceType(it, "meta", payload.type)
             } ?: payload.type
@@ -496,17 +530,25 @@ class StremioProvider : MainAPI() {
             val hasEpisodes = !StremioMapping.usesEpisodes(meta.type ?: payload.type, meta.videos) ||
                 !meta.videos.isNullOrEmpty()
             if (hasTitle && hasEpisodes) return meta
+            if (hasTitle && titledFallback == null) titledFallback = meta
         }
-        return null
+        return titledFallback
     }
 
-    private fun toEpisode(parentType: String, base: String?, video: StremioVideo): Episode? {
-        val videoId = video.id ?: return null
+    private fun toEpisode(
+        parentType: String,
+        base: String?,
+        video: StremioVideo,
+        index: Int,
+    ): Episode? {
+        // decodePayload rejects blank ids, so a blank episode would be unopenable.
+        val videoId = video.id?.takeIf { it.isNotBlank() } ?: return null
         val parsedIndex = StremioMapping.episodeIndexFromId(videoId)
         return newEpisode(StremioMapping.encodePayload(videoId, parentType, base)) {
             this.name = StremioMapping.episodeName(video) ?: videoId
             this.season = video.season ?: parsedIndex?.first ?: 1
-            this.episode = video.episode ?: video.number ?: parsedIndex?.second ?: 1
+            // Unnumbered uploads/channels must not all collapse into S1E1.
+            this.episode = video.episode ?: video.number ?: parsedIndex?.second ?: (index + 1)
             this.posterUrl = video.thumbnail
             this.description = video.overview
             this.score = scoreFrom10(video.rating)
@@ -567,6 +609,10 @@ class StremioProvider : MainAPI() {
                     try {
                         val manifest = StremioApi.getManifest(base) ?: return@launch
                         manifests[base] = manifest
+                        // Release the subtitle gate as soon as this manifest is known, not after
+                        // the (up to 90 s) stream fetch. The `finally` below repeats the call so
+                        // early returns still release it (complete() is idempotent).
+                        manifestDone.getValue(base).complete(Unit)
 
                         val streamType = StremioMapping.resolveResourceType(manifest, "stream", type)
                             ?: return@launch
@@ -603,10 +649,17 @@ class StremioProvider : MainAPI() {
                             // ExoPlayer as VIDEO always fails. Delegate to CloudStream's YouTube
                             // extractors and drop the link when extraction fails.
                             if (StremioMapping.isYouTubeUrl(candidate.url)) {
-                                if (emitYouTube(candidate, subtitleCallback, callback)) {
-                                    emitted.incrementAndGet()
-                                    found.set(true)
+                                if (emitted.get() >= MAX_LINKS) break
+                                // loadExtractor can emit several links for one video; count the
+                                // links it actually emits so the global MAX_LINKS cap holds.
+                                var youtubeLinks = 0
+                                emitYouTube(candidate, subtitleCallback) { link ->
+                                    if (emitted.incrementAndGet() <= MAX_LINKS) {
+                                        callback.invoke(link)
+                                        youtubeLinks++
+                                    }
                                 }
+                                if (youtubeLinks > 0) found.set(true)
                                 continue
                             }
                             val drmKind = StremioMapping.drmKind(candidate.stream)
@@ -648,7 +701,12 @@ class StremioProvider : MainAPI() {
                                     ) {
                                         this.quality = candidate.quality
                                         this.referer = candidate.referer
-                                        this.headers = candidate.headers
+                                        // DRM gateways may need their own license headers
+                                        // (e.g. Authorization); merge them over the stream's.
+                                        this.headers = mergeHeaders(
+                                            candidate.headers,
+                                            candidate.stream.drm?.headers,
+                                        )
                                         candidate.stream.drm?.keyRequestParameters?.let {
                                             if (it.isNotEmpty()) this.keyRequestParameters = HashMap(it)
                                         }
@@ -839,6 +897,21 @@ class StremioProvider : MainAPI() {
             StremioMapping.StreamKind.DASH -> ExtractorLinkType.DASH
             StremioMapping.StreamKind.VIDEO -> ExtractorLinkType.VIDEO
         }
+    }
+
+    /** Overlays [extra] on [base], replacing keys case-insensitively (HTTP header names). */
+    private fun mergeHeaders(
+        base: Map<String, String>,
+        extra: Map<String, String>?,
+    ): Map<String, String> {
+        if (extra.isNullOrEmpty()) return base
+        val merged = LinkedHashMap<String, String>(base.size + extra.size)
+        merged.putAll(base)
+        extra.forEach { (key, value) ->
+            merged.keys.firstOrNull { it.equals(key, ignoreCase = true) }?.let { merged.remove(it) }
+            merged[key] = value
+        }
+        return merged
     }
 
     private fun hostOf(base: String): String =

@@ -627,6 +627,51 @@ class StremioManifestTest {
     }
 
     @Test
+    fun rejectsStructurallyEmptyManifests() {
+        // An HTTP error body deserializes into an all-null manifest; caching it would hide a
+        // valid stale manifest for 30 minutes.
+        assertFalse(StremioMapping.isUsableManifest(StremioMapping.parseManifest("""{"error":"Service Unavailable"}""")))
+        assertFalse(StremioMapping.isUsableManifest(StremioMapping.parseManifest("{}")))
+        assertTrue(StremioMapping.isUsableManifest(manifest))
+        // Streams-only and catalogs-only addons are valid.
+        assertTrue(StremioMapping.isUsableManifest(StremioMapping.parseManifest("""{"id":"x","resources":["stream"]}""")))
+        assertTrue(StremioMapping.isUsableManifest(StremioMapping.parseManifest("""{"catalogs":[{"type":"movie","id":"top"}]}""")))
+    }
+
+    @Test
+    fun resolvesAnimeAndOtherAliasesForStandardAddons() {
+        val standard = StremioMapping.parseManifest(
+            """{"id":"org.std","types":["movie","series"],"resources":["stream","subtitles"]}"""
+        )
+        // Plain `anime` has no known shape, so it is not guessed against movie/series.
+        assertNull(StremioMapping.resolveResourceType(standard, "stream", "anime"))
+        assertEquals("series", StremioMapping.resolveResourceType(standard, "stream", "anime.series"))
+        assertEquals("movie", StremioMapping.resolveResourceType(standard, "stream", "anime.movie"))
+        assertEquals("movie", StremioMapping.resolveResourceType(standard, "stream", "other"))
+        assertEquals("series", StremioMapping.resolveResourceType(standard, "stream", "series"))
+
+        // Anime-only addons remain reachable from the canonical movie/series types.
+        val animeOnly = StremioMapping.parseManifest(
+            """{"id":"org.anime","resources":[{"name":"stream","types":["anime.series"]}]}"""
+        )
+        assertEquals("anime.series", StremioMapping.resolveResourceType(animeOnly, "stream", "series"))
+        assertNull(StremioMapping.resolveResourceType(animeOnly, "stream", "movie"))
+    }
+
+    @Test
+    fun canonicalLinkTypeFollowsMediaShape() {
+        assertEquals("movie", StremioMapping.linkTypeFor("anime", StremioMapping.MediaShape.Movie))
+        assertEquals("series", StremioMapping.linkTypeFor("anime", StremioMapping.MediaShape.Series))
+        assertEquals("movie", StremioMapping.linkTypeFor("anime.movie", StremioMapping.MediaShape.Movie))
+        assertEquals("series", StremioMapping.linkTypeFor("anime.series", StremioMapping.MediaShape.Series))
+        assertEquals("movie", StremioMapping.linkTypeFor("other", StremioMapping.MediaShape.Movie))
+        assertEquals("series", StremioMapping.linkTypeFor("other", StremioMapping.MediaShape.Series))
+        // Live/audio types keep their addon-specific value.
+        assertEquals("tv", StremioMapping.linkTypeFor("tv", StremioMapping.MediaShape.Live))
+        assertEquals("music", StremioMapping.linkTypeFor("music", StremioMapping.MediaShape.Movie))
+    }
+
+    @Test
     fun normalizesAddonUrls() {
         assertEquals(
             "https://torrentio.strem.fun/realdebrid=KEY",

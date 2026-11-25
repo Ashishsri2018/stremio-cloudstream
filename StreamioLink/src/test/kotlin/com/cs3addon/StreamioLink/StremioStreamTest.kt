@@ -1129,4 +1129,73 @@ class StremioStreamTest {
         assertTrue(!StremioMapping.isDashDrmUrl("https://cdn.example/drm.m3u8"))
         assertTrue(!StremioMapping.isDashDrmUrl("https://cdn.example/drm.mp4"))
     }
+
+    @Test
+    fun streamKindLooksAtPathNotHostOrQuery() {
+        // Hostnames that contain a media-looking token must not decide the kind.
+        assertEquals(StremioMapping.StreamKind.VIDEO, StremioMapping.guessStreamKind("https://mp4.example.com/file.bin"))
+        assertEquals(StremioMapping.StreamKind.VIDEO, StremioMapping.guessStreamKind("https://mov.example.com/file.bin"))
+        // Query values must not decide it either.
+        assertEquals(StremioMapping.StreamKind.VIDEO, StremioMapping.guessStreamKind("https://cdn.example/file.bin?format=mpd"))
+        // Real extensions and path hints still win.
+        assertEquals(StremioMapping.StreamKind.HLS, StremioMapping.guessStreamKind("https://cdn.example/live/index.m3u8?token=1"))
+        assertEquals(StremioMapping.StreamKind.DASH, StremioMapping.guessStreamKind("https://cdn.example/live/manifest.mpd?token=1"))
+        assertEquals(StremioMapping.StreamKind.HLS, StremioMapping.guessStreamKind("https://cdn.example/hls/playlist?token=1"))
+        assertEquals(StremioMapping.StreamKind.DASH, StremioMapping.guessStreamKind("https://cdn.example/mpd/manifest?token=1"))
+    }
+
+    @Test
+    fun drmKeysAcceptUuidHyphensAndRejectPaddingOnly() {
+        val hyphenated = StremioMapping.clearKeyPairs(
+            StremioStream(
+                drm = StremioDrm(
+                    clearKeys = mapOf("00112233-4455-6677-8899-aabbccddeeff" to "ffeeddccbbaa99887766554433221100")
+                )
+            )
+        )
+        assertEquals("ABEiM0RVZneImaq7zN3u_w", hyphenated[0].kid)
+
+        // "=" alone decodes to zero bytes; it must not produce an empty key pair.
+        assertTrue(
+            StremioMapping.clearKeyPairs(
+                StremioStream(drm = StremioDrm(clearKeys = mapOf("=" to "=")))
+            ).isEmpty()
+        )
+    }
+
+    @Test
+    fun infersClearKeyFromKeyFieldsWhenTypeIsBlank() {
+        val drm = StremioDrm(type = " ", keyId = "00112233445566778899aabbccddeeff", key = "ffeeddccbbaa99887766554433221100")
+        assertEquals(StremioMapping.DrmKind.CLEARKEY, StremioMapping.drmKind(StremioStream(drm = drm)))
+        assertNull(StremioMapping.drmKind(StremioStream(drm = StremioDrm(type = " "))))
+    }
+
+    @Test
+    fun licenseUrlIsCaseInsensitiveAndRejectsWhitespace() {
+        assertEquals(
+            "https://license.example/wv",
+            StremioMapping.drmLicenseUrl(
+                StremioStream(drm = StremioDrm(type = "widevine", licenseUrl = "HTTPS://license.example/wv"))
+            ),
+        )
+        assertNull(
+            StremioMapping.drmLicenseUrl(
+                StremioStream(drm = StremioDrm(type = "widevine", licenseUrl = "https://license.example/w v"))
+            ),
+        )
+    }
+
+    @Test
+    fun parsesDrmHeaders() {
+        val stream = StremioMapping.parseStreams(
+            """{"streams":[{"name":"x","url":"https://cdn.example/x.mpd","drm":{"type":"widevine","licenseUrl":"https://license.example/wv","headers":{"Authorization":"Bearer t"}}}]}"""
+        ).single()
+        assertEquals(mapOf("Authorization" to "Bearer t"), stream.drm?.headers)
+    }
+
+    @Test
+    fun languageTokenRegexDoesNotFalsePositiveOnMal() {
+        // "mal" used to be aliased to Malayalam, matching English "malformed"/"normal".
+        assertTrue(StremioMapping.streamLanguages(StremioStream(title = "malformed normal")).isEmpty())
+    }
 }

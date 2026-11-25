@@ -37,9 +37,14 @@ variant would drop audio (Pluto variant playlists are video-only; audio is a sep
 - **DRM playback is DASH-only and single-key (2026-11-21)**: `DrmExtractorLink` carries one
   ClearKey KID/key and CloudStream's player always builds a `DashMediaSource`. Multi-key ClearKey
   streams therefore use the first valid pair, and HLS/progressive DRM streams stay on the normal
-  link path. Widevine/PlayReady require a `licenseUrl`. The `drm` field is not part of the official
-  Stremio protocol, so stock Stremio clients ignore it; only DRM-capable bridges such as this
-  plugin consume it.
+  link path. Widevine/PlayReady require a `licenseUrl`. `drm.headers` are merged into the link's
+  headers (CloudStream has no separate license-header field, so they are also sent to the media
+  URL). The `drm` field is not part of the official Stremio protocol, so stock Stremio clients
+  ignore it; only DRM-capable bridges such as this plugin consume it.
+- **Addon base URLs must be query/fragment-free (2026-11-25)**: `normalizeAddonUrl` strips a
+  trailing `manifest.json` (with its query/fragment) but rejects any remaining `?`/`#`, because
+  resource URLs are built by appending paths. Configure such addons (if any) through their path
+  form instead.
 - **`externalUrl` streams are skipped (2026-11-21)**: CloudStream links are built only from
   playable `url`/`ytId`/magnet streams. `externalUrl` entries (web pages/archives) are never
   offered, so any `drm` metadata the addon forwards on them is not mapped to a player link.

@@ -160,10 +160,19 @@ object StremioApi {
                 return staleManifest(base)
             }
             val manifest = StremioMapping.parseManifest(json)
+            if (!StremioMapping.isUsableManifest(manifest)) {
+                // e.g. `{"error":"Service Unavailable"}` parsed into an all-null manifest.
+                Log.e(TAG, "Ignoring empty manifest for $base")
+                markFailure(base)
+                return staleManifest(base)
+            }
             clearFailure(base)
+            // Stamp after the request: a slow (but successful) fetch must not arrive already
+            // older than MANIFEST_TTL_MS.
+            val storedAt = System.currentTimeMillis()
             cacheMutex.withLock {
-                pruneManifestsLocked(now)
-                manifestCache[base] = CachedManifest(manifest, now)
+                pruneManifestsLocked(storedAt)
+                manifestCache[base] = CachedManifest(manifest, storedAt)
             }
             manifest
         } catch (t: CancellationException) {
@@ -240,26 +249,31 @@ object StremioApi {
     ): List<StremioSubtitle> {
         // Try the canonical hint-bearing URL first, then the extra-less one. Addons such as
         // PlavioHD implement only `/subtitles/{type}/{id}.json` and answer any path extra
-        // with an HTML 404; NiceHttp does not throw on that status, so the body reaches the
-        // parser and fails, which is the signal to retry the plain shape.
+        // with a 404 (HTML or a JSON error body), so a client error means "try the plain shape".
         for (url in StremioMapping.buildSubtitlesUrlCandidates(base, type, id, videoHash, videoSize)) {
             if (isBackingOff(url)) continue
-            val json = try {
-                request(url, STREAM_TIMEOUT_MS)
+            val result = try {
+                fetch(url, STREAM_TIMEOUT_MS)
             } catch (t: CancellationException) {
                 throw t
             } catch (t: Throwable) {
                 Log.e(TAG, "Subtitles for $id failed on $base: ${t.message}")
                 null
             }
-            // A null body is a transport failure/timeout: do not spend another full timeout
-            // on the alternate shape, just record it and stop.
-            if (json == null) {
+            // Transport failure/timeout: do not spend another full timeout on the alternate
+            // shape, just record it and stop.
+            if (result == null) {
                 markFailure(url)
                 break
             }
+            if (!result.isSuccessful) {
+                markFailure(url)
+                // 4xx usually means this shape is unsupported; try the next candidate.
+                // 5xx/429 mean the addon is unhealthy and another shape will not help.
+                if (result.code in 400..499) continue else break
+            }
             val subtitles = try {
-                StremioMapping.parseSubtitles(json)
+                StremioMapping.parseSubtitles(result.body)
             } catch (t: Throwable) {
                 null
             }
@@ -267,8 +281,7 @@ object StremioApi {
                 clearFailure(url)
                 return subtitles
             }
-            // Non-JSON body (e.g. an HTML 404): back off this shape so later episodes skip
-            // straight to the next candidate, then try it.
+            // 2xx but non-JSON body: back off this shape and try the next candidate.
             markFailure(url)
         }
         return emptyList()
@@ -295,8 +308,9 @@ object StremioApi {
                 clearFailure(url)
                 val streams = StremioMapping.parseStreams(json)
                 if (streams.isNotEmpty()) {
-                    pruneStreams(now)
-                    streamCache[key] = CachedStreams(streams, now)
+                    // Stamp after the request so a slow (but successful) addon does not arrive
+                    // already older than STREAM_CACHE_TTL_MS.
+                    storeStreams(key, streams, System.currentTimeMillis())
                 }
                 streams
             }
@@ -310,18 +324,25 @@ object StremioApi {
     }
 
     /**
-     * Drops expired entries first, then the oldest, keeping [streamCache] bounded. Serialized
-     * so two queries completing at the same time cannot both enter the eviction loop and evict
-     * more entries than intended.
+     * Inserts [streams] and evicts expired/oldest entries under one lock. Insertion used to
+     * happen outside the lock after pruning, so concurrent completions could exceed
+     * [STREAM_CACHE_MAX].
      */
-    private fun pruneStreams(now: Long) {
+    private fun storeStreams(key: String, streams: List<StremioStream>, storedAt: Long) {
         synchronized(streamCacheLock) {
-            streamCache.entries.removeAll { now - it.value.fetchedAt >= STREAM_CACHE_TTL_MS }
+            streamCache.entries.removeAll { storedAt - it.value.fetchedAt >= STREAM_CACHE_TTL_MS }
             while (streamCache.size >= STREAM_CACHE_MAX) {
-                val oldest = streamCache.entries.minByOrNull { it.value.fetchedAt } ?: return
+                val oldest = streamCache.entries.minByOrNull { it.value.fetchedAt }
+                if (oldest == null) break
                 streamCache.remove(oldest.key)
             }
+            streamCache[key] = CachedStreams(streams, storedAt)
         }
+    }
+
+    /** HTTP response body plus status, so callers can distinguish 4xx/5xx from transport errors. */
+    private data class HttpResult(val body: String, val code: Int) {
+        val isSuccessful: Boolean get() = code in 200..299
     }
 
     /**
@@ -329,9 +350,42 @@ object StremioApi {
      * leaves OkHttp's 10 s read timeout in place. Slow aggregator addons (PenguPlay etc.)
      * routinely need longer than that to produce a first byte, so they must be given an
      * explicit per-request timeout. NiceHttp takes the timeout in seconds.
+     *
+     * NiceHttp does not throw on non-2xx responses, so the status must be inspected here.
+     * Otherwise a 5xx JSON body such as `{"error":"..."}` is parsed into an all-null model,
+     * which used to be cached as a valid empty manifest or treated as a successful empty
+     * subtitle list.
      */
-    private suspend fun request(url: String, timeoutMs: Long): String? =
+    private suspend fun fetch(url: String, timeoutMs: Long): HttpResult? =
         kotlinx.coroutines.withTimeoutOrNull(timeoutMs + 1_000L) {
-            app.get(url, timeout = (timeoutMs / 1000L).coerceAtLeast(1L)).text
+            try {
+                val response = app.get(url, timeout = (timeoutMs / 1000L).coerceAtLeast(1L))
+                HttpResult(response.text, response.code)
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                Log.e(TAG, "Request failed for $url: ${t.message}")
+                null
+            }
         }
+
+    /** Body of a 2xx response, or null for transport failures and non-2xx statuses. */
+    private suspend fun request(url: String, timeoutMs: Long): String? {
+        val result = fetch(url, timeoutMs) ?: return null
+        if (!result.isSuccessful) {
+            Log.w(TAG, "HTTP ${result.code} for $url")
+            return null
+        }
+        return result.body
+    }
+
+    /**
+     * Drops cached manifests/streams and the failure back-off. Called when settings change so
+     * the pre-fetch uses the new addon set instead of serving stale data (or a recent back-off).
+     */
+    suspend fun invalidateCache() {
+        cacheMutex.withLock { manifestCache.clear() }
+        streamCache.clear()
+        failedUntil.clear()
+    }
 }

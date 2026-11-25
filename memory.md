@@ -13,6 +13,41 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
 - **v41 — DRM passthrough**: the addon's `drm` object maps to CloudStream `DrmExtractorLink`
   for DASH (ClearKey uses the first pair, Widevine/PlayReady use `licenseUrl`); HLS/progressive
   DRM streams stay on the normal link path. CI green: run 44849665456 (2026-11-21).
+- **2026-11-21 — Verified compatibility: Unified Streams proxy**:
+  Tested `https://unified-streams-proxy.ashishsri2018.workers.dev/manifest.json`.
+  Compatible as a **Source Addon** (resources: `["stream"]`, idPrefixes: `["tt", "tmdb:", "mal:", "kitsu:"]`).
+  Live test returned 5 movie streams (tt0111161) and 147 series streams (tt0903747:1:1) aggregating SA7, Nuvio, and Vega.
+  Proxy headers (`proxyHeaders.request`), embedded subtitles (`stream.subtitles`), and HLS/direct streams map cleanly to `ExtractorLink`.
+  Added to `tools/test-addons.json`.
+  Clarified `notWebReady`: purely an official Stremio Web UI flag; completely ignored by StreamioLink and CloudStream.
+  Partial stream counts on cold queries are caused by `unified-streams` backend scrapers still resolving during initial request.
+  Confirmed via live experiment: cold request yielded only fast responders, whereas warmed cache on Rick & Morty S4E3 instantly loaded all 45 links across 16+ providers in CloudStream.
+
+- **v42 — code-review fixes (2026-11-25)**: addressed the verified findings from
+  `streamiolink_code_bug_review.md`.
+  - Android compatibility: `languageTokenRegex` no longer uses the Java-only `\p{IsLatin}`
+    (throws `PatternSyntaxException` on API 21–28); it is now `\p{L}`. The `mal` → Malayalam alias
+    was removed (it collides with MyAnimeList / Spanish "mal").
+  - Non-2xx handling: `StremioApi` now inspects status (`HttpResult`). Error bodies are no longer
+    parsed/cached as empty manifests or empty subtitle lists; `isUsableManifest` rejects all-null
+    manifests. Cache timestamps are taken after the request; stream-cache insertion moved inside
+    the lock.
+  - Subtitles: 4xx tries the next URL shape; other non-2xx/transport failures stop early.
+  - Types: `anime`/`anime.movie`/`anime.series`/`other` are canonicalised to `movie`/`series`
+    before `loadLinks` (standard stream addons only advertise those), with alias fallbacks for
+    anime-only addons. `resolveResourceType` no longer guesses plain `anime`.
+  - Provider: manifest gate completes as soon as the manifest is known (not after the 90 s stream
+    timeout); home manifests fetched concurrently; page>1 is skipped for non-paginable catalogs;
+    empty home no longer advertises more pages; blank ids/ids and unnumbered episodes handled;
+    `fetchMeta` skips addons without the `meta` resource or matching id prefix and keeps a titled
+    fallback; YouTube links now count every emitted link toward `MAX_LINKS`; `drm.headers` are
+    merged into the link headers.
+  - Settings: dialog validation keeps the dialog open; blank/invalid meta URLs are rejected instead
+    of silently saved; last enabled catalog can't be deleted; warm-up cancels the previous job and
+    invalidates caches.
+  - Build: removed the unused Material dependency; CI guards an unresolved JitPack `version` and
+    fails when `plugins.json`/`.cs3` is missing instead of publishing an empty repo.
+  - 102 JVM tests pass via `streamiolink-tests`. Bumped 41 → 42.
 
 ## Build/CI Lessons (important)
 - JitPack coordinate `com.github.recloudstream:gradle:master-SNAPSHOT` only serves an

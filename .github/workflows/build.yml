@@ -40,6 +40,10 @@ jobs:
             echo "Attempt $i: metadata HTTP $code, retrying in 15s"
             sleep 15
           done
+          if [ -z "$version" ]; then
+            echo "JitPack metadata never resolved; skipping artifact polling"
+            exit 0
+          fi
           for i in $(seq 1 24); do
             pom=$(curl -s -o /dev/null -w "%{http_code}" "$base/gradle-${version}.pom" || true)
             jar=$(curl -s -o /dev/null -w "%{http_code}" "$base/gradle-${version}.jar" || true)
@@ -74,9 +78,17 @@ jobs:
 
       - name: Prepare Deployment Folder
         run: |
+          if [ ! -f build/plugins.json ]; then
+            echo "::error::build/plugins.json is missing; refusing to publish a broken repo"
+            exit 1
+          fi
           mkdir -p output_builds
           find . -type f -name '*.cs3' -not -path './output_builds/*' -exec cp {} output_builds/ \;
-          cp build/plugins.json output_builds/ || true
+          cp build/plugins.json output_builds/
+          if [ -z "$(ls -A output_builds/*.cs3 2>/dev/null)" ]; then
+            echo "::error::no .cs3 plugin artifacts were produced; refusing to publish"
+            exit 1
+          fi
           ls -la output_builds
 
       - name: Deploy to Builds Branch

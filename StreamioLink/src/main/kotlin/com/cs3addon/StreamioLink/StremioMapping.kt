@@ -42,6 +42,25 @@ object StremioMapping {
     private val LIVE_RESOURCE_TYPE_FALLBACKS = listOf("live", "tv", "channel", "movie")
 
     /**
+     * Non-standard catalog types that can be served by addons advertising the protocol's
+     * `movie`/`series` types (and vice versa). AIOMetadata exposes `anime` catalogs whose
+     * streams live on Torrentio/Comet/Unified Streams (`types: ["movie", "series"]`), while
+     * anime-only addons advertise `anime`/`anime.movie`/`anime.series`.
+     */
+    private val ANIME_LIKE_TYPES = setOf("anime", "anime.movie", "anime.series", "other")
+
+    /** Alias types tried, in order, when [requestedType] is not advertised verbatim. */
+    private val RESOURCE_TYPE_ALIASES = mapOf(
+        "movie" to listOf("movie", "anime.movie", "anime", "other"),
+        "series" to listOf("series", "anime.series", "anime", "other"),
+        // Plain `anime` is intentionally not aliased: the shape is unknown at this point, and
+        // guessing movie vs. series would fire the wrong resource URL. load() resolves it first.
+        "anime.movie" to listOf("anime.movie", "anime", "movie"),
+        "anime.series" to listOf("anime.series", "anime", "series"),
+        "other" to listOf("other", "movie", "series"),
+    )
+
+    /**
      * Stremio CDNs (e.g. the `hakunaymatata.com` hosts behind MovieBox/VidLink) return
      * HTTP 428 when the request carries a Mozilla/browser User-Agent, but 200 for
      * non-browser agents. [DEFAULT_STREAM_USER_AGENT] is applied to streams whose addon
@@ -53,7 +72,8 @@ object StremioMapping {
     /** Cap on public trackers merged into an infoHash magnet, keeping the URI compact. */
     const val MAX_PUBLIC_TRACKERS = 10
 
-    private val manifestSuffixRegex = Regex("""/manifest\.json/?$""", RegexOption.IGNORE_CASE)
+    private val manifestSuffixRegex =
+        Regex("""/manifest\.json/?(?:[?#].*)?$""", RegexOption.IGNORE_CASE)
     private val stremioPrefixRegex = Regex("""^(?:https?://)?stremio:/+""", RegexOption.IGNORE_CASE)
     private val videoFileRegex = Regex("""\.(mp4|mkv|webm|avi|mov|m4v|flv)(?![0-9a-z])""")
     private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
@@ -76,7 +96,10 @@ object StremioMapping {
     /** Highest season accepted when inferring a video index from its id (see [episodeIndexFromId]). */
     private const val MAX_PARSED_SEASON = 100
 
-    private val languageTokenRegex = Regex("""\p{IsLatin}+""")
+    // `\p{IsLatin}` is a Java-regex extension that Android's ICU-backed Pattern rejects before
+    // API 29 (PatternSyntaxException: U_ILLEGAL_ARGUMENT_ERROR). `\p{L}` is portable across all
+    // Android versions; every alias key is Latin, so extra non-Latin tokens simply never match.
+    private val languageTokenRegex = Regex("""\p{L}+""")
     private val dualAudioRegex = Regex("""(?:dual|multi)[\s\-_.]*audio""", RegexOption.IGNORE_CASE)
 
     /** Lines that describe subtitles rather than audio; these must never feed audio language tags. */
@@ -113,7 +136,8 @@ object StremioMapping {
         "telugu" to "Telugu",
         "tel" to "Telugu",
         "malayalam" to "Malayalam",
-        "mal" to "Malayalam",
+        // "mal" is deliberately omitted: it doubles as MyAnimeList ("MAL") and as the Spanish
+        // word for "bad", so free-text matching produced false Malayalam tags.
         "kannada" to "Kannada",
         "kan" to "Kannada",
         "bengali" to "Bengali",
@@ -300,6 +324,18 @@ object StremioMapping {
     fun manifestSupportsResource(manifest: StremioManifest, resource: String): Boolean =
         manifestResourceNames(manifest).any { it.equals(resource, ignoreCase = true) }
 
+    /**
+     * True when [manifest] looks like a real manifest rather than an HTTP error body. Because
+     * every model ignores unknown fields, `{"error":"Service Unavailable"}` deserializes into an
+     * all-null manifest; caching that for 30 minutes would hide a valid stale manifest.
+     * Streams-only and catalogs-only addons are valid, so only an entirely empty object is
+     * rejected.
+     */
+    fun isUsableManifest(manifest: StremioManifest): Boolean =
+        !(manifest.id.isNullOrBlank() &&
+            manifest.resources.isNullOrEmpty() &&
+            manifest.catalogs.isNullOrEmpty())
+
     private fun resourceNodeFor(manifest: StremioManifest, resource: String): JsonNode? =
         manifest.resources.orEmpty().firstOrNull { node ->
             (node.textOrNull() ?: node.get("name")?.textOrNull())?.equals(resource, ignoreCase = true) == true
@@ -349,7 +385,7 @@ object StremioMapping {
         if (requested in LIVE_MEDIA_TYPES) {
             return LIVE_RESOURCE_TYPE_FALLBACKS.firstOrNull { it in types }
         }
-        return null
+        return RESOURCE_TYPE_ALIASES[requested].orEmpty().firstOrNull { it in types }
     }
 
     /** True when [manifest] can serve [type] for [resource] (see [resolveResourceType]). */
@@ -422,6 +458,27 @@ object StremioMapping {
     }
 
     /**
+     * Canonical type stored in the payload handed back to [StremioProvider.loadLinks].
+     *
+     * Non-standard catalog types (`anime`, `anime.movie`, `anime.series`, `other`) are not
+     * advertised by the standard stream addons (Torrentio, Comet, MediaFusion, Unified Streams
+     * all declare `types: ["movie", "series"]`). Passing them through made [resolveResourceType]
+     * return null and silently skipped those addons. The resolved shape is the reliable signal,
+     * so it is mapped to the protocol's `movie`/`series`; [resolveResourceType] still falls back
+     * to anime-only aliases for addons that require them. Live and audio types keep their
+     * addon-specific value because their stream resources are often declared under it.
+     */
+    fun linkTypeFor(type: String?, shape: MediaShape): String {
+        val normalized = type?.trim()?.lowercase().orEmpty()
+        return when {
+            normalized.isEmpty() -> if (shape == MediaShape.Series) "series" else "movie"
+            shape == MediaShape.Series && normalized in ANIME_LIKE_TYPES -> "series"
+            shape == MediaShape.Movie && normalized in ANIME_LIKE_TYPES -> "movie"
+            else -> type!!.trim()
+        }
+    }
+
+    /**
      * Value for the catalog's required extras, as a protocol path extra (`genre=Fall%202026`).
      * Cloudstream's home screen has no genre picker, so a required extra can only be satisfied
      * from the manifest itself: its `default`, or the first `options` entry. Returns null when a
@@ -447,7 +504,9 @@ object StremioMapping {
                 ?: return null
             values[name] = value
         }
-        return values.entries.joinToString("&") { (name, value) -> "$name=${encodeQueryValue(value)}" }
+        return values.entries.joinToString("&") { (name, value) ->
+            "${encodeQueryValue(name)}=${encodeQueryValue(value)}"
+        }
     }
 
     /** Joins a catalog's preset extras with `search`/`skip`, keeping all of them in one path extra. */
@@ -587,18 +646,38 @@ object StremioMapping {
 
         url = stremioPrefixRegex.replace(url, "").trim()
         if (url.isEmpty()) return null
+        // Whitespace pasted from chat messages survives trimming when it is not at the edges and
+        // later makes OkHttp throw while parsing the request URL.
+        if (whitespaceInUrlRegex.containsMatchIn(url)) return null
 
         if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) {
             if (!url.contains(".")) return null
             url = "https://$url"
         }
+        // Strip a pasted manifest URL (with any query/fragment attached) down to its addon base.
         url = url.replace(manifestSuffixRegex, "")
+        // Resource URLs are built by appending `/manifest.json` or `/{resource}/...` to the base,
+        // so a remaining query/fragment cannot be preserved without producing a broken URL.
+        if (url.contains('?') || url.contains('#')) return null
+        url = normalizeSchemeAndHost(url)
         url = url.trimEnd('/')
 
         if (url.equals("https:", ignoreCase = true) || url.equals("http:", ignoreCase = true)) {
             return null
         }
         return url.ifEmpty { null }
+    }
+
+    /** Lowercases the scheme and authority (host) while preserving the case-sensitive path. */
+    private fun normalizeSchemeAndHost(url: String): String {
+        val schemeEnd = url.indexOf("://")
+        if (schemeEnd <= 0) return url
+        val scheme = url.substring(0, schemeEnd).lowercase()
+        val rest = url.substring(schemeEnd + 3)
+        val authorityEnd = rest.indexOf('/').let { if (it < 0) rest.length else it }
+        if (authorityEnd == 0) return "$scheme://$rest"
+        val authority = rest.substring(0, authorityEnd).lowercase()
+        return "$scheme://$authority${rest.substring(authorityEnd)}"
     }
 
     /**
@@ -616,21 +695,21 @@ object StremioMapping {
 
     fun buildCatalogUrl(base: String, type: String, catalogId: String, extra: String? = null): String {
         val extraSegment = extra?.takeIf { it.isNotBlank() }?.let { "/$it" }.orEmpty()
-        return "$base/catalog/$type/${encodePathSegment(catalogId)}$extraSegment.json"
+        return "$base/catalog/${encodePathSegment(type)}/${encodePathSegment(catalogId)}$extraSegment.json"
     }
 
     fun buildMetaUrl(base: String, type: String, id: String): String =
-        "$base/meta/$type/${encodePathSegment(id)}.json"
+        "$base/meta/${encodePathSegment(type)}/${encodePathSegment(id)}.json"
 
     fun buildStreamUrl(base: String, type: String, id: String): String =
-        "$base/stream/$type/${encodePathSegment(id)}.json"
+        "$base/stream/${encodePathSegment(type)}/${encodePathSegment(id)}.json"
 
     fun buildSubtitlesUrl(base: String, type: String, id: String, videoHash: String?, videoSize: Long?): String {
         val extra = mutableListOf<String>()
-        if (!videoHash.isNullOrBlank()) extra.add("videoHash=$videoHash")
+        if (!videoHash.isNullOrBlank()) extra.add("videoHash=${encodeQueryValue(videoHash)}")
         if (videoSize != null && videoSize > 0) extra.add("videoSize=$videoSize")
         val extraSegment = if (extra.isEmpty()) "" else "/" + extra.joinToString("&")
-        return "$base/subtitles/$type/${encodePathSegment(id)}$extraSegment.json"
+        return "$base/subtitles/${encodePathSegment(type)}/${encodePathSegment(id)}$extraSegment.json"
     }
 
     /**
@@ -656,9 +735,25 @@ object StremioMapping {
 
     enum class StreamKind { HLS, DASH, VIDEO }
 
+    /**
+     * Path component of [url] (scheme, authority, query and fragment removed). Inspecting the
+     * hostname caused `.mpd`/`.mov` domains (e.g. `cdn.mpd.example.com`, the `.mov` TLD) to be
+     * mistaken for a DASH manifest or a direct video file.
+     */
+    private fun pathOnly(url: String): String {
+        val withoutQuery = url.substringBefore('?').substringBefore('#')
+        val schemeEnd = withoutQuery.indexOf("://")
+        if (schemeEnd < 0) return withoutQuery
+        val authorityStart = schemeEnd + 3
+        val pathStart = withoutQuery.indexOf('/', authorityStart)
+        return if (pathStart >= 0) withoutQuery.substring(pathStart) else ""
+    }
+
+    private val mpdPathRegex = Regex("""/mpd(?:$|/)""")
+
     fun guessStreamKind(url: String, filename: String? = null): StreamKind {
         val lower = url.lowercase()
-        val path = lower.substringBefore('?').substringBefore('#')
+        val path = pathOnly(lower)
         val name = filename?.lowercase().orEmpty()
         // Addons such as PenguPlay append metadata after the extension
         // (e.g. "movie.mkv|^|720p..."), so check for the marker anywhere in path/name
@@ -675,8 +770,8 @@ object StremioMapping {
         // query is still recognised (e.g. `.../proxy/bound?d=...%2F...m3u8`).
         return when {
             lower.contains(".m3u8") || path.contains("/hls") || path.contains("/playlist") ||
-                lower.contains("mpegurl") -> StreamKind.HLS
-            lower.contains(".mpd") -> StreamKind.DASH
+                path.contains("/m3u8") || lower.contains("mpegurl") -> StreamKind.HLS
+            lower.contains(".mpd") || mpdPathRegex.containsMatchIn(path) -> StreamKind.DASH
             else -> StreamKind.VIDEO
         }
     }
@@ -690,8 +785,7 @@ object StremioMapping {
             StreamKind.DASH -> true
             StreamKind.HLS -> false
             StreamKind.VIDEO -> {
-                val lower = url.lowercase()
-                val path = lower.substringBefore('?').substringBefore('#')
+                val path = pathOnly(url.lowercase())
                 val name = filename?.lowercase().orEmpty()
                 !videoFileRegex.containsMatchIn(path + " " + name)
             }
@@ -707,12 +801,17 @@ object StremioMapping {
      */
     fun drmKind(stream: StremioStream): DrmKind? {
         val drm = stream.drm ?: return null
-        val type = drm.type?.trim()?.lowercase()
+        val type = drm.type?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
         return when {
             type == "clearkey" || type == "org.w3.clearkey" -> DrmKind.CLEARKEY
             type == "widevine" || type == "com.widevine.alpha" -> DrmKind.WIDEVINE
             type == "playready" || type == "com.microsoft.playready" -> DrmKind.PLAYREADY
-            type == null && !drm.clearKeys.isNullOrEmpty() -> DrmKind.CLEARKEY
+            // Some gateways emit a blank `type` and only the keys.
+            type == null && (
+                !drm.clearKeys.isNullOrEmpty() ||
+                    !drm.keyId.isNullOrBlank() ||
+                    !drm.key.isNullOrBlank()
+                ) -> DrmKind.CLEARKEY
             else -> null
         }
     }
@@ -738,22 +837,30 @@ object StremioMapping {
     /** Returns a usable http(s) license endpoint for Widevine/PlayReady DRM. */
     fun drmLicenseUrl(stream: StremioStream): String? {
         val url = stream.drm?.licenseUrl?.trim().orEmpty()
-        return url.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+        if (url.isEmpty() || whitespaceInUrlRegex.containsMatchIn(url)) return null
+        val lower = url.lowercase()
+        return url.takeIf { lower.startsWith("https://") || lower.startsWith("http://") }
+            ?.let(::normalizeSchemeAndHost)
     }
 
     private val hex32Regex = Regex("^[0-9a-fA-F]{32}$")
+    private val uuidRegex =
+        Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
     /**
      * ExoPlayer's ClearKey JSON expects unpadded base64url. Providers usually send 32-char
-     * hex KID/key values, so convert those; already-base64 values are normalized in place.
+     * hex KID/key values (sometimes as a hyphenated UUID), so convert those; already-base64
+     * values are normalized in place. Inputs that normalize to nothing (e.g. `"==="`) are
+     * rejected instead of being handed to ExoPlayer as an empty key.
      */
     private fun normalizeDrmKey(raw: String): String? {
         val value = raw.trim()
         if (value.isEmpty()) return null
-        return if (hex32Regex.matches(value)) {
-            base64Url(hexToBytes(value))
+        val hex = if (uuidRegex.matches(value)) value.replace("-", "") else value
+        return if (hex32Regex.matches(hex)) {
+            base64Url(hexToBytes(hex))
         } else {
-            normalizeBase64Url(value)
+            normalizeBase64Url(value).takeIf { it.isNotEmpty() }
         }
     }
 
@@ -769,7 +876,9 @@ object StremioMapping {
 
     @OptIn(ExperimentalEncodingApi::class)
     private fun base64Url(bytes: ByteArray): String =
-        Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(bytes)
+        // `PaddingOption` needs Kotlin 2.0+ in the host CloudStream stdlib; trimming the padded
+        // output is byte-identical and works on older hosts.
+        Base64.UrlSafe.encode(bytes).trimEnd('=')
 
     private fun normalizeBase64Url(value: String): String =
         value.replace('+', '-').replace('/', '_').trimEnd('=')

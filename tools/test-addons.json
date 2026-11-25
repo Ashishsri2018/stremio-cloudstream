@@ -47,6 +47,11 @@
       "notes": "http addon with both catalog and sources"
     },
     {
+      "name": "unified-streams",
+      "url": "https://unified-streams-proxy.ashishsri2018.workers.dev/manifest.json",
+      "notes": "Unified streams proxy aggregating SA7, Nuvio, and Vega. Streams-only (no catalogs), supports tt/tmdb/mal/kitsu."
+    },
+    {
       "name": "meteor",
       "url": "https://meteorfortheweebs.midnightignite.me/eyJjYWNoZWRPbmx5IjpmYWxzZSwic2tpcFJlbGVhc2VGaWx0ZXIiOnRydWUsInJlbW92ZVRyYXNoIjpmYWxzZSwicmVtb3ZlU2FtcGxlcyI6ZmFsc2UsImFsbG93QWR1bHQiOmZhbHNlLCJleGNsdWRlM0QiOmZhbHNlLCJlbmFibGVTZWFEZXgiOmZhbHNlLCJzaG93WW91ck1lZGlhIjpmYWxzZSwieW91ck1lZGlhTGVnYWN5TW9kZSI6ZmFsc2UsIm1pblNlZWRlcnMiOjAsIm1heFJlc3VsdHMiOjAsIm1heFBlclJlc29sdXRpb24iOjAsInJlc29sdXRpb25zIjpbXSwicHJlZmVycmVkTGFuZ3MiOlsiZW4iLCJtdWx0aSJdLCJsYW5ndWFnZXMiOltdLCJleGNsdWRlZExhbmdzIjpbXSwicmVzdWx0Rm9ybWF0IjpbInRpdGxlIiwicXVhbGl0eSIsInNpemUiLCJhdWRpbyJdLCJsYW5ndWFnZUZvcm1hdCI6ImZsYWdzIiwic29ydE9yZGVyIjpbImNhY2hlZCIsInNlYWRleCIsInJlc29sdXRpb24iLCJxdWFsaXR5IiwibGFuZ3VhZ2UiLCJzZWVkZXJzIiwic2l6ZSIsInBhY2siLCJoZHIiLCJjb2RlYyJdLCJhbGxvd1AyUCI6dHJ1ZSwiZXhjbHVkZWRTb3VyY2VzIjpbXX0/manifest.json",
       "home": "https://meteorfortheweebs.midnightignite.me/configure",

@@ -171,6 +171,8 @@ data class StremioDrm(
     @JsonProperty("clearKeys") val clearKeys: Map<String, String>? = null,
     /** Widevine/PlayReady license endpoint. */
     @JsonProperty("licenseUrl") val licenseUrl: String? = null,
+    /** Extra headers for license requests (e.g. Authorization tokens from DRM gateways). */
+    @JsonProperty("headers") val headers: Map<String, String>? = null,
     @JsonProperty("keyId") val keyId: String? = null,
     @JsonProperty("key") val key: String? = null,
     @JsonProperty("kty") val kty: String? = null,

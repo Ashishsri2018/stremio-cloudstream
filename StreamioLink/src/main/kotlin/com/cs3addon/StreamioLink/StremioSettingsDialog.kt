@@ -19,6 +19,8 @@ import com.lagradost.api.Log
 import com.lagradost.cloudstream3.CommonActivity.showToast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
@@ -113,7 +115,10 @@ object StremioSettingsDialog {
                     iconButton(context, "🗑️", "Delete addon") {
                         catalogEntries.removeAll { it.url == entry.url }
                         rerenderCatalogs()
-                    }.apply { isEnabled = catalogEntries.size > 1 }
+                    }.apply {
+                        // Keep at least one enabled catalog; disabled ones can always be removed.
+                        isEnabled = !entry.enabled || enabledCount > 1
+                    }
                 )
                 block.addView(row)
                 block.addView(
@@ -289,7 +294,16 @@ object StremioSettingsDialog {
                     showToast("Keep at least one catalog addon enabled")
                     return@setOnClickListener
                 }
-                val meta = metaInput.text.toString()
+                val metaText = metaInput.text.toString()
+                val meta = if (metaText.isBlank()) {
+                    null
+                } else {
+                    StremioMapping.normalizeAddonUrl(metaText) ?: run {
+                        // Silently falling back to Cinemeta made a typo look saved.
+                        showToast("Not a valid metadata addon URL")
+                        return@setOnClickListener
+                    }
+                }
                 StremioSettings.save(
                     catalogs = catalog,
                     metaUrl = meta,
@@ -312,6 +326,7 @@ object StremioSettingsDialog {
     ) {
         val input = EditText(context).apply {
             hint = "https://addon.example/manifest.json"
+            isSingleLine = true
             if (initialUrl != null) {
                 setText(initialUrl)
             } else {
@@ -323,19 +338,26 @@ object StremioSettingsDialog {
             }
         }
 
-        AlertDialog.Builder(context)
+        val dialog = AlertDialog.Builder(context)
             .setTitle(title)
             .setView(input)
-            .setPositiveButton(if (initialUrl == null) "Add" else "Save") { _, _ ->
+            .setPositiveButton(if (initialUrl == null) "Add" else "Save", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.setOnShowListener {
+            // Validate without dismissing: the default listener closed the dialog and lost
+            // the typed URL on every typo.
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val normalized = StremioMapping.normalizeAddonUrl(input.text.toString())
                 if (normalized == null) {
                     showToast("Not a valid addon URL")
                 } else {
                     onAdded(normalized)
+                    dialog.dismiss()
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
+        dialog.show()
     }
 
     /** Compact symbol button so a row fits URL + toggle + edit + delete on one line. */
@@ -359,10 +381,18 @@ object StremioSettingsDialog {
         }
     }
 
+    /** One warm-up at a time; a rapid second Save cancels the previous (now stale) pre-fetch. */
+    private var warmUpJob: Job? = null
+    private val warmUpScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /** Best effort pre-fetch of all manifests so the first requests are instant. */
     private fun warmUpAddons() {
-        CoroutineScope(Dispatchers.IO).launch {
+        warmUpJob?.cancel()
+        warmUpJob = warmUpScope.launch {
             try {
+                // Settings just changed: drop cached manifests/streams and any recent back-off
+                // so this pre-fetch reflects the new addon set instead of returning stale data.
+                StremioApi.invalidateCache()
                 val bases = (StremioSettings.streamAddonUrls() + StremioSettings.catalogUrls() + StremioSettings.metaUrl())
                     .mapNotNull { StremioMapping.normalizeAddonUrl(it) }
                     .distinct()
