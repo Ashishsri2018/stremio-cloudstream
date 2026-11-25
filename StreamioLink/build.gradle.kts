@@ -1,4 +1,7 @@
 dependencies {
+    // Not referenced directly, but the `com.lagradost:cloudstream3:pre-release` stub does not
+    // pull its AndroidX/coroutines classpath transitively; this dependency supplies it.
+    implementation("com.google.android.material:material:1.12.0")
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.1.0")

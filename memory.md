@@ -45,8 +45,10 @@ Dated change/release log. Current unresolved issues and limitations live in `kno
   - Settings: dialog validation keeps the dialog open; blank/invalid meta URLs are rejected instead
     of silently saved; last enabled catalog can't be deleted; warm-up cancels the previous job and
     invalidates caches.
-  - Build: removed the unused Material dependency; CI guards an unresolved JitPack `version` and
-    fails when `plugins.json`/`.cs3` is missing instead of publishing an empty repo.
+  - Build: CI guards an unresolved JitPack `version` and fails when `plugins.json`/`.cs3` is
+    missing instead of publishing an empty repo. The Material dependency was kept: although not
+    referenced directly, it supplies the AndroidX/coroutines classpath that the
+    `cloudstream3:pre-release` stub does not bring transitively (removing it broke compilation).
   - 102 JVM tests pass via `streamiolink-tests`. Bumped 41 → 42.
 
 ## Build/CI Lessons (important)
