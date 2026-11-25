@@ -1,0 +1,25 @@
+[
+    {
+        "iconUrl": "https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/main/StreamioLink/icon.png",
+        "fileHash": "sha256-ca2c548ea3e60216cfa731931b472d0606910ab32cf199253730cf08a81b0f2c",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Ashishsri2018/stremio-cloudstream",
+        "fileSize": 135031,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Ashishsri2018"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Live",
+            "Torrent"
+        ],
+        "version": 42,
+        "internalName": "StreamioLink",
+        "description": "Play streams from Stremio addons. Configure one catalog addon (default: Cinemeta) plus as many source addons as you like in the settings.",
+        "url": "https://raw.githubusercontent.com/Ashishsri2018/stremio-cloudstream/builds/StreamioLink.cs3",
+        "name": "StreamioLink"
+    }
+]
